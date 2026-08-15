@@ -1,6 +1,6 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js";
 
-console.log("SQUARE CRAFT SURVIVAL: TREE COLLISION VERSION");
+console.log("SQUARE CRAFT SURVIVAL - BREAKING + PLACING VERSION");
 
 // ======================================================
 // HTML
@@ -9,6 +9,9 @@ console.log("SQUARE CRAFT SURVIVAL: TREE COLLISION VERSION");
 const playButton = document.getElementById("playButton");
 const startScreen = document.getElementById("startScreen");
 const gameContainer = document.getElementById("game");
+
+const hotbarSlots =
+    Array.from(document.querySelectorAll(".slot"));
 
 gameContainer.style.display = "none";
 
@@ -21,6 +24,8 @@ let scene;
 let camera;
 let renderer;
 let clock;
+
+let blockGeometry;
 
 
 // ======================================================
@@ -38,7 +43,6 @@ const gravity = 20;
 const jumpPower = 7.5;
 
 const eyeHeight = 1.7;
-
 const playerHeight = 1.8;
 const playerRadius = 0.32;
 
@@ -52,25 +56,257 @@ let onGround = false;
 
 const worldSize = 60;
 
+const worldBlocks =
+    new Map();
+
+const blocksByType = {
+
+    grass: new Map(),
+
+    dirt: new Map(),
+
+    wood: new Map(),
+
+    leaves: new Map(),
+
+    stone: new Map()
+
+};
+
 
 // ======================================================
-// TREE COLLISION DATA
+// RENDERED BLOCK MESHES
 // ======================================================
 
-const solidTreeBlocks = new Set();
+const renderMeshes = {
+
+    grass: null,
+
+    dirt: null,
+
+    wood: null,
+
+    leaves: null,
+
+    stone: null
+
+};
 
 
-function blockKey(x, y, z) {
+let materials = {};
+
+
+// ======================================================
+// BLOCK INTERACTION
+// ======================================================
+
+const raycaster =
+    new THREE.Raycaster();
+
+const screenCenter =
+    new THREE.Vector2(
+        0,
+        0
+    );
+
+const blockReach = 6;
+
+raycaster.far =
+    blockReach;
+
+
+// ======================================================
+// HOTBAR
+// ======================================================
+
+const hotbarTypes = [
+
+    "grass",
+    "dirt",
+    "wood",
+    "leaves",
+    "stone"
+
+];
+
+let selectedHotbarIndex = 0;
+
+
+// ======================================================
+// BLOCK NAME LABEL
+// ======================================================
+
+const blockNameLabel =
+    document.createElement("div");
+
+blockNameLabel.style.position =
+    "fixed";
+
+blockNameLabel.style.bottom =
+    "95px";
+
+blockNameLabel.style.left =
+    "50%";
+
+blockNameLabel.style.transform =
+    "translateX(-50%)";
+
+blockNameLabel.style.color =
+    "white";
+
+blockNameLabel.style.fontSize =
+    "22px";
+
+blockNameLabel.style.fontWeight =
+    "bold";
+
+blockNameLabel.style.textShadow =
+    "2px 2px 0 black";
+
+blockNameLabel.style.pointerEvents =
+    "none";
+
+blockNameLabel.style.zIndex =
+    "20";
+
+gameContainer.appendChild(
+    blockNameLabel
+);
+
+
+// ======================================================
+// BLOCK KEY
+// ======================================================
+
+function blockKey(
+    x,
+    y,
+    z
+) {
 
     return `${x},${y},${z}`;
 
 }
 
 
-function addSolidTreeBlock(x, y, z) {
+// ======================================================
+// ADD BLOCK
+// ======================================================
 
-    solidTreeBlocks.add(
-        blockKey(x, y, z)
+function addBlock(
+    x,
+    y,
+    z,
+    type
+) {
+
+    const key =
+        blockKey(
+            x,
+            y,
+            z
+        );
+
+
+    if (
+        worldBlocks.has(key)
+    ) {
+
+        return false;
+
+    }
+
+
+    const block = {
+
+        x: x,
+        y: y,
+        z: z,
+
+        type: type
+
+    };
+
+
+    worldBlocks.set(
+        key,
+        block
+    );
+
+
+    blocksByType[type].set(
+        key,
+        block
+    );
+
+
+    return true;
+
+}
+
+
+// ======================================================
+// REMOVE BLOCK
+// ======================================================
+
+function removeBlock(
+    x,
+    y,
+    z
+) {
+
+    const key =
+        blockKey(
+            x,
+            y,
+            z
+        );
+
+
+    const block =
+        worldBlocks.get(key);
+
+
+    if (!block) {
+
+        return null;
+
+    }
+
+
+    worldBlocks.delete(
+        key
+    );
+
+
+    blocksByType[
+        block.type
+    ].delete(
+        key
+    );
+
+
+    return block;
+
+}
+
+
+// ======================================================
+// CHECK FOR BLOCK
+// ======================================================
+
+function blockExists(
+    x,
+    y,
+    z
+) {
+
+    return worldBlocks.has(
+        blockKey(
+            x,
+            y,
+            z
+        )
     );
 
 }
@@ -80,54 +316,86 @@ function addSolidTreeBlock(x, y, z) {
 // PLAY BUTTON
 // ======================================================
 
-playButton.addEventListener("click", () => {
+playButton.addEventListener(
+    "click",
+    () => {
 
-    startScreen.style.display = "none";
-    gameContainer.style.display = "block";
+        startScreen.style.display =
+            "none";
 
-    startGame();
+        gameContainer.style.display =
+            "block";
 
-});
+        startGame();
+
+    }
+);
 
 
 // ======================================================
 // TERRAIN HEIGHT
 // ======================================================
 
-function getTerrainHeight(x, z) {
+function getTerrainHeight(
+    x,
+    z
+) {
 
     const wave1 =
-        Math.sin(x * 0.11) * 2.2;
+        Math.sin(
+            x * 0.11
+        ) * 2.2;
+
 
     const wave2 =
-        Math.cos(z * 0.10) * 2.0;
+        Math.cos(
+            z * 0.10
+        ) * 2.0;
+
 
     const wave3 =
-        Math.sin((x + z) * 0.065) * 1.6;
+        Math.sin(
+            (x + z) *
+            0.065
+        ) * 1.6;
+
 
     const wave4 =
-        Math.cos((x - z) * 0.045) * 1.2;
+        Math.cos(
+            (x - z) *
+            0.045
+        ) * 1.2;
 
 
     let height =
+
         3 +
+
         wave1 +
+
         wave2 +
+
         wave3 +
+
         wave4;
 
 
     height =
-        Math.floor(height);
+        Math.floor(
+            height
+        );
 
 
     height =
         Math.max(
+
             0,
+
             Math.min(
                 8,
                 height
             )
+
         );
 
 
@@ -137,16 +405,25 @@ function getTerrainHeight(x, z) {
 
 
 // ======================================================
-// RANDOM NUMBER BASED ON COORDINATES
+// COORDINATE RANDOM
 // ======================================================
 
-function coordinateRandom(x, z) {
+function coordinateRandom(
+    x,
+    z
+) {
 
     const value =
+
         Math.sin(
+
             x * 12.9898 +
+
             z * 78.233
-        ) * 43758.5453;
+
+        ) *
+
+        43758.5453;
 
 
     return value -
@@ -159,26 +436,35 @@ function coordinateRandom(x, z) {
 // TREE SPAWN CHECK
 // ======================================================
 
-function canTreeSpawn(x, z) {
+function canTreeSpawn(
+    x,
+    z
+) {
 
     const spawnX = 0;
     const spawnZ = 8;
 
 
     const distance =
+
         Math.sqrt(
+
             Math.pow(
                 x - spawnX,
                 2
             ) +
+
             Math.pow(
                 z - spawnZ,
                 2
             )
+
         );
 
 
-    if (distance < 8) {
+    if (
+        distance < 8
+    ) {
 
         return false;
 
@@ -186,11 +472,15 @@ function canTreeSpawn(x, z) {
 
 
     if (
+
         Math.abs(x) >
         worldSize - 4
+
         ||
+
         Math.abs(z) >
         worldSize - 4
+
     ) {
 
         return false;
@@ -199,26 +489,64 @@ function canTreeSpawn(x, z) {
 
 
     const center =
-        getTerrainHeight(x, z);
+        getTerrainHeight(
+            x,
+            z
+        );
+
 
     const north =
-        getTerrainHeight(x, z - 1);
+        getTerrainHeight(
+            x,
+            z - 1
+        );
+
 
     const south =
-        getTerrainHeight(x, z + 1);
+        getTerrainHeight(
+            x,
+            z + 1
+        );
+
 
     const east =
-        getTerrainHeight(x + 1, z);
+        getTerrainHeight(
+            x + 1,
+            z
+        );
+
 
     const west =
-        getTerrainHeight(x - 1, z);
+        getTerrainHeight(
+            x - 1,
+            z
+        );
 
 
     if (
-        Math.abs(center - north) > 1 ||
-        Math.abs(center - south) > 1 ||
-        Math.abs(center - east) > 1 ||
-        Math.abs(center - west) > 1
+
+        Math.abs(
+            center - north
+        ) > 1
+
+        ||
+
+        Math.abs(
+            center - south
+        ) > 1
+
+        ||
+
+        Math.abs(
+            center - east
+        ) > 1
+
+        ||
+
+        Math.abs(
+            center - west
+        ) > 1
+
     ) {
 
         return false;
@@ -232,73 +560,128 @@ function canTreeSpawn(x, z) {
 
 
 // ======================================================
-// PLAYER VS TREE COLLISION
+// HOTBAR UPDATE
 // ======================================================
 
-function playerHitsTree(
+function updateHotbar() {
+
+    for (
+        let i = 0;
+        i < hotbarSlots.length;
+        i++
+    ) {
+
+        hotbarSlots[i]
+            .classList
+            .toggle(
+                "selected",
+                i === selectedHotbarIndex
+            );
+
+
+        hotbarSlots[i].textContent =
+            i + 1;
+
+
+        hotbarSlots[i].title =
+            hotbarTypes[i];
+
+    }
+
+
+    const selectedType =
+        hotbarTypes[
+            selectedHotbarIndex
+        ];
+
+
+    blockNameLabel.textContent =
+        selectedType.toUpperCase();
+
+}
+
+
+// ======================================================
+// PLAYER AABB COLLISION
+// ======================================================
+
+function playerCollides(
     testX,
     testY,
     testZ
 ) {
 
     const playerMinX =
-        testX - playerRadius;
+        testX -
+        playerRadius;
 
     const playerMaxX =
-        testX + playerRadius;
+        testX +
+        playerRadius;
 
 
     const playerMinZ =
-        testZ - playerRadius;
+        testZ -
+        playerRadius;
 
     const playerMaxZ =
-        testZ + playerRadius;
+        testZ +
+        playerRadius;
 
 
     const feetY =
-        testY - eyeHeight;
+        testY -
+        eyeHeight;
 
 
     const playerMinY =
         feetY;
 
+
     const playerMaxY =
-        feetY + playerHeight;
+        feetY +
+        playerHeight;
 
-
-    // Blocks are centered on whole numbers
-    // and extend 0.5 in every direction.
 
     const minBlockX =
         Math.ceil(
-            playerMinX - 0.5
+            playerMinX -
+            0.5
         );
+
 
     const maxBlockX =
         Math.floor(
-            playerMaxX + 0.5
+            playerMaxX +
+            0.5
         );
 
 
     const minBlockY =
         Math.ceil(
-            playerMinY - 0.5
+            playerMinY -
+            0.5
         );
+
 
     const maxBlockY =
         Math.floor(
-            playerMaxY + 0.5
+            playerMaxY +
+            0.5
         );
 
 
     const minBlockZ =
         Math.ceil(
-            playerMinZ - 0.5
+            playerMinZ -
+            0.5
         );
+
 
     const maxBlockZ =
         Math.floor(
-            playerMaxZ + 0.5
+            playerMaxZ +
+            0.5
         );
 
 
@@ -321,12 +704,10 @@ function playerHitsTree(
             ) {
 
                 if (
-                    !solidTreeBlocks.has(
-                        blockKey(
-                            x,
-                            y,
-                            z
-                        )
+                    !blockExists(
+                        x,
+                        y,
+                        z
                     )
                 ) {
 
@@ -341,11 +722,13 @@ function playerHitsTree(
                 const blockMaxX =
                     x + 0.5;
 
+
                 const blockMinY =
                     y - 0.5;
 
                 const blockMaxY =
                     y + 0.5;
+
 
                 const blockMinZ =
                     z - 0.5;
@@ -354,34 +737,45 @@ function playerHitsTree(
                     z + 0.5;
 
 
-                const overlapsX =
+                const overlapX =
+
                     playerMaxX >
                     blockMinX
+
                     &&
+
                     playerMinX <
                     blockMaxX;
 
 
-                const overlapsY =
+                const overlapY =
+
                     playerMaxY >
                     blockMinY
+
                     &&
+
                     playerMinY <
                     blockMaxY;
 
 
-                const overlapsZ =
+                const overlapZ =
+
                     playerMaxZ >
                     blockMinZ
+
                     &&
+
                     playerMinZ <
                     blockMaxZ;
 
 
                 if (
-                    overlapsX &&
-                    overlapsY &&
-                    overlapsZ
+
+                    overlapX &&
+                    overlapY &&
+                    overlapZ
+
                 ) {
 
                     return true;
@@ -396,6 +790,87 @@ function playerHitsTree(
 
 
     return false;
+
+}
+
+
+// ======================================================
+// CHECK IF NEW BLOCK WOULD HIT PLAYER
+// ======================================================
+
+function blockWouldHitPlayer(
+    blockX,
+    blockY,
+    blockZ
+) {
+
+    const feetY =
+        camera.position.y -
+        eyeHeight;
+
+
+    const playerMinX =
+        camera.position.x -
+        playerRadius;
+
+    const playerMaxX =
+        camera.position.x +
+        playerRadius;
+
+
+    const playerMinY =
+        feetY;
+
+    const playerMaxY =
+        feetY +
+        playerHeight;
+
+
+    const playerMinZ =
+        camera.position.z -
+        playerRadius;
+
+    const playerMaxZ =
+        camera.position.z +
+        playerRadius;
+
+
+    const blockMinX =
+        blockX - 0.5;
+
+    const blockMaxX =
+        blockX + 0.5;
+
+
+    const blockMinY =
+        blockY - 0.5;
+
+    const blockMaxY =
+        blockY + 0.5;
+
+
+    const blockMinZ =
+        blockZ - 0.5;
+
+    const blockMaxZ =
+        blockZ + 0.5;
+
+
+    return (
+
+        playerMaxX > blockMinX &&
+
+        playerMinX < blockMaxX &&
+
+        playerMaxY > blockMinY &&
+
+        playerMinY < blockMaxY &&
+
+        playerMaxZ > blockMinZ &&
+
+        playerMinZ < blockMaxZ
+
+    );
 
 }
 
@@ -434,36 +909,21 @@ function startGame() {
 
     camera =
         new THREE.PerspectiveCamera(
+
             75,
+
             window.innerWidth /
             window.innerHeight,
+
             0.1,
+
             500
+
         );
 
 
     camera.rotation.order =
         "YXZ";
-
-
-    const spawnX = 0;
-    const spawnZ = 8;
-
-
-    const spawnHeight =
-        getTerrainHeight(
-            spawnX,
-            spawnZ
-        );
-
-
-    camera.position.set(
-        spawnX,
-        spawnHeight +
-        0.5 +
-        eyeHeight,
-        spawnZ
-    );
 
 
     // ==================================================
@@ -472,21 +932,30 @@ function startGame() {
 
     renderer =
         new THREE.WebGLRenderer({
+
             antialias: false
+
         });
 
 
     renderer.setSize(
+
         window.innerWidth,
         window.innerHeight
+
     );
 
 
     renderer.setPixelRatio(
+
         Math.min(
+
             window.devicePixelRatio,
+
             2
+
         )
+
     );
 
 
@@ -503,8 +972,29 @@ function startGame() {
         "click",
         () => {
 
-            renderer.domElement
-                .requestPointerLock();
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+
+                renderer.domElement
+                    .requestPointerLock();
+
+            }
+
+        }
+    );
+
+
+    // ==================================================
+    // DISABLE RIGHT CLICK MENU
+    // ==================================================
+
+    renderer.domElement.addEventListener(
+        "contextmenu",
+        (event) => {
+
+            event.preventDefault();
 
         }
     );
@@ -533,36 +1023,159 @@ function startGame() {
 
 
             yaw -=
+
                 event.movementX *
+
                 sensitivity;
 
 
             pitch -=
+
                 event.movementY *
+
                 sensitivity;
 
 
             const maximumPitch =
+
                 Math.PI / 2 -
+
                 0.01;
 
 
             pitch =
+
                 Math.max(
+
                     -maximumPitch,
+
                     Math.min(
+
                         maximumPitch,
+
                         pitch
+
                     )
+
                 );
 
 
             camera.rotation.y =
                 yaw;
 
+
             camera.rotation.x =
                 pitch;
 
+        }
+    );
+
+
+    // ==================================================
+    // BLOCK BREAK / PLACE
+    // ==================================================
+
+    renderer.domElement.addEventListener(
+        "mousedown",
+        (event) => {
+
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+
+                return;
+
+            }
+
+
+            // LEFT CLICK
+
+            if (
+                event.button === 0
+            ) {
+
+                breakTargetBlock();
+
+            }
+
+
+            // RIGHT CLICK
+
+            if (
+                event.button === 2
+            ) {
+
+                placeTargetBlock();
+
+            }
+
+        }
+    );
+
+
+    // ==================================================
+    // MOUSE WHEEL HOTBAR
+    // ==================================================
+
+    renderer.domElement.addEventListener(
+        "wheel",
+        (event) => {
+
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+
+                return;
+
+            }
+
+
+            event.preventDefault();
+
+
+            if (
+                event.deltaY > 0
+            ) {
+
+                selectedHotbarIndex++;
+
+            }
+            else {
+
+                selectedHotbarIndex--;
+
+            }
+
+
+            if (
+                selectedHotbarIndex >
+                hotbarTypes.length - 1
+            ) {
+
+                selectedHotbarIndex =
+                    0;
+
+            }
+
+
+            if (
+                selectedHotbarIndex <
+                0
+            ) {
+
+                selectedHotbarIndex =
+                    hotbarTypes.length - 1;
+
+            }
+
+
+            updateHotbar();
+
+        },
+        {
+            passive: false
         }
     );
 
@@ -579,13 +1192,22 @@ function startGame() {
                 true;
 
 
+            // JUMP
+
             if (
-                event.code === "Space" &&
+
+                event.code ===
+                "Space"
+
+                &&
+
                 onGround
+
             ) {
 
                 verticalVelocity =
                     jumpPower;
+
 
                 onGround =
                     false;
@@ -594,10 +1216,43 @@ function startGame() {
 
 
             if (
-                event.code === "Space"
+                event.code ===
+                "Space"
             ) {
 
                 event.preventDefault();
+
+            }
+
+
+            // HOTBAR
+
+            if (
+                event.code.startsWith(
+                    "Digit"
+                )
+            ) {
+
+                const number =
+                    Number(
+                        event.code.substring(
+                            5
+                        )
+                    );
+
+
+                if (
+                    number >= 1 &&
+                    number <= 5
+                ) {
+
+                    selectedHotbarIndex =
+                        number - 1;
+
+
+                    updateHotbar();
+
+                }
 
             }
 
@@ -622,15 +1277,22 @@ function startGame() {
 
     const sunlight =
         new THREE.DirectionalLight(
+
             0xffffff,
+
             2.3
+
         );
 
 
     sunlight.position.set(
+
         40,
+
         70,
+
         25
+
     );
 
 
@@ -641,8 +1303,11 @@ function startGame() {
 
     const ambientLight =
         new THREE.AmbientLight(
+
             0xffffff,
+
             1.1
+
         );
 
 
@@ -652,54 +1317,99 @@ function startGame() {
 
 
     // ==================================================
-    // MATERIALS
+    // BLOCK MATERIALS
     // ==================================================
 
     const grassTop =
         new THREE.MeshLambertMaterial({
+
             color: 0x61b84a
+
         });
 
 
     const grassSide =
         new THREE.MeshLambertMaterial({
+
             color: 0x56883c
+
         });
 
 
     const dirtMaterial =
         new THREE.MeshLambertMaterial({
+
             color: 0x795235
+
         });
 
 
     const woodMaterial =
         new THREE.MeshLambertMaterial({
+
             color: 0x765030
+
         });
 
 
     const leavesMaterial =
         new THREE.MeshLambertMaterial({
+
             color: 0x357a32
+
+        });
+
+
+    const stoneMaterial =
+        new THREE.MeshLambertMaterial({
+
+            color: 0x777777
+
         });
 
 
     const grassMaterials = [
+
         grassSide,
+
         grassSide,
+
         grassTop,
+
         dirtMaterial,
+
         grassSide,
+
         grassSide
+
     ];
 
 
+    materials = {
+
+        grass:
+            grassMaterials,
+
+        dirt:
+            dirtMaterial,
+
+        wood:
+            woodMaterial,
+
+        leaves:
+            leavesMaterial,
+
+        stone:
+            stoneMaterial
+
+    };
+
+
     // ==================================================
-    // BLOCK GEOMETRY
+    // GEOMETRY
     // ==================================================
 
-    const blockGeometry =
+    blockGeometry =
         new THREE.BoxGeometry(
             1,
             1,
@@ -708,18 +1418,83 @@ function startGame() {
 
 
     // ==================================================
-    // BLOCK DATA
-    // ==================================================
-
-    const grassBlocks = [];
-    const dirtBlocks = [];
-
-    const trunkBlocks = [];
-    const leafBlocks = [];
-
-
-    // ==================================================
     // GENERATE WORLD
+    // ==================================================
+
+    generateWorld();
+
+
+    // ==================================================
+    // SPAWN PLAYER
+    // ==================================================
+
+    const spawnX = 0;
+    const spawnZ = 8;
+
+
+    const spawnHeight =
+        getTerrainHeight(
+            spawnX,
+            spawnZ
+        );
+
+
+    camera.position.set(
+
+        spawnX,
+
+        spawnHeight +
+        0.5 +
+        eyeHeight,
+
+        spawnZ
+
+    );
+
+
+    // ==================================================
+    // HOTBAR
+    // ==================================================
+
+    updateHotbar();
+
+
+    // ==================================================
+    // CLOCK
+    // ==================================================
+
+    clock =
+        new THREE.Clock();
+
+
+    animate();
+
+}
+
+
+// ======================================================
+// GENERATE WORLD
+// ======================================================
+
+function generateWorld() {
+
+    worldBlocks.clear();
+
+
+    for (
+        const type of
+        hotbarTypes
+    ) {
+
+        blocksByType[
+            type
+        ].clear();
+
+    }
+
+
+    // ==================================================
+    // TERRAIN
     // ==================================================
 
     for (
@@ -743,37 +1518,83 @@ function startGame() {
 
             // GRASS
 
-            grassBlocks.push({
-                x: x,
-                y: height,
-                z: z
-            });
+            addBlock(
+
+                x,
+
+                height,
+
+                z,
+
+                "grass"
+
+            );
 
 
-            // DIRT
+            // DIRT LAYER 1
 
-            dirtBlocks.push({
-                x: x,
-                y: height - 1,
-                z: z
-            });
+            addBlock(
 
+                x,
 
-            dirtBlocks.push({
-                x: x,
-                y: height - 2,
-                z: z
-            });
+                height - 1,
 
+                z,
 
-            dirtBlocks.push({
-                x: x,
-                y: height - 3,
-                z: z
-            });
+                "dirt"
+
+            );
 
 
-            // TREES
+            // DIRT LAYER 2
+
+            addBlock(
+
+                x,
+
+                height - 2,
+
+                z,
+
+                "dirt"
+
+            );
+
+
+            // STONE
+
+            addBlock(
+
+                x,
+
+                height - 3,
+
+                z,
+
+                "stone"
+
+            );
+
+        }
+
+    }
+
+
+    // ==================================================
+    // TREES
+    // ==================================================
+
+    for (
+        let x = -worldSize;
+        x <= worldSize;
+        x++
+    ) {
+
+        for (
+            let z = -worldSize;
+            z <= worldSize;
+            z++
+        ) {
 
             const treeChance =
                 coordinateRandom(
@@ -783,19 +1604,30 @@ function startGame() {
 
 
             if (
-                treeChance < 0.027 &&
+
+                treeChance <
+                0.027
+
+                &&
+
                 canTreeSpawn(
                     x,
                     z
                 )
+
             ) {
 
                 createTree(
+
                     x,
-                    height,
-                    z,
-                    trunkBlocks,
-                    leafBlocks
+
+                    getTerrainHeight(
+                        x,
+                        z
+                    ),
+
+                    z
+
                 );
 
             }
@@ -806,149 +1638,10 @@ function startGame() {
 
 
     // ==================================================
-    // REGISTER TREE COLLISIONS
+    // RENDER ALL TYPES
     // ==================================================
 
-    solidTreeBlocks.clear();
-
-
-    for (
-        const block of trunkBlocks
-    ) {
-
-        addSolidTreeBlock(
-            block.x,
-            block.y,
-            block.z
-        );
-
-    }
-
-
-    for (
-        const block of leafBlocks
-    ) {
-
-        addSolidTreeBlock(
-            block.x,
-            block.y,
-            block.z
-        );
-
-    }
-
-
-    // ==================================================
-    // CREATE BLOCKS
-    // ==================================================
-
-    createInstancedBlocks(
-        blockGeometry,
-        grassMaterials,
-        grassBlocks
-    );
-
-
-    createInstancedBlocks(
-        blockGeometry,
-        dirtMaterial,
-        dirtBlocks
-    );
-
-
-    createInstancedBlocks(
-        blockGeometry,
-        woodMaterial,
-        trunkBlocks
-    );
-
-
-    createInstancedBlocks(
-        blockGeometry,
-        leavesMaterial,
-        leafBlocks
-    );
-
-
-    // ==================================================
-    // CLOCK
-    // ==================================================
-
-    clock =
-        new THREE.Clock();
-
-
-    animate();
-
-}
-
-
-// ======================================================
-// CREATE INSTANCED BLOCKS
-// ======================================================
-
-function createInstancedBlocks(
-    geometry,
-    material,
-    blocks
-) {
-
-    if (
-        blocks.length === 0
-    ) {
-
-        return;
-
-    }
-
-
-    const mesh =
-        new THREE.InstancedMesh(
-            geometry,
-            material,
-            blocks.length
-        );
-
-
-    const dummy =
-        new THREE.Object3D();
-
-
-    for (
-        let i = 0;
-        i < blocks.length;
-        i++
-    ) {
-
-        const block =
-            blocks[i];
-
-
-        dummy.position.set(
-            block.x,
-            block.y,
-            block.z
-        );
-
-
-        dummy.updateMatrix();
-
-
-        mesh.setMatrixAt(
-            i,
-            dummy.matrix
-        );
-
-    }
-
-
-    mesh.instanceMatrix.needsUpdate =
-        true;
-
-
-    scene.add(
-        mesh
-    );
+    rebuildAllBlocks();
 
 }
 
@@ -960,21 +1653,25 @@ function createInstancedBlocks(
 function createTree(
     x,
     groundHeight,
-    z,
-    trunkBlocks,
-    leafBlocks
+    z
 ) {
 
     const random =
         coordinateRandom(
+
             x + 500,
+
             z + 500
+
         );
 
 
     const trunkHeight =
+
         random > 0.5
+
             ? 5
+
             : 4;
 
 
@@ -988,17 +1685,26 @@ function createTree(
         y++
     ) {
 
-        trunkBlocks.push({
-            x: x,
-            y: groundHeight + y,
-            z: z
-        });
+        addBlock(
+
+            x,
+
+            groundHeight +
+            y,
+
+            z,
+
+            "wood"
+
+        );
 
     }
 
 
     const leafBase =
+
         groundHeight +
+
         trunkHeight;
 
 
@@ -1019,8 +1725,17 @@ function createTree(
         ) {
 
             if (
-                Math.abs(leafX) === 2 &&
-                Math.abs(leafZ) === 2
+
+                Math.abs(
+                    leafX
+                ) === 2
+
+                &&
+
+                Math.abs(
+                    leafZ
+                ) === 2
+
             ) {
 
                 continue;
@@ -1029,8 +1744,13 @@ function createTree(
 
 
             if (
-                leafX === 0 &&
+
+                leafX === 0
+
+                &&
+
                 leafZ === 0
+
             ) {
 
                 continue;
@@ -1038,11 +1758,17 @@ function createTree(
             }
 
 
-            leafBlocks.push({
-                x: x + leafX,
-                y: leafBase,
-                z: z + leafZ
-            });
+            addBlock(
+
+                x + leafX,
+
+                leafBase,
+
+                z + leafZ,
+
+                "leaves"
+
+            );
 
         }
 
@@ -1066,8 +1792,17 @@ function createTree(
         ) {
 
             if (
-                Math.abs(leafX) === 2 &&
-                Math.abs(leafZ) === 2
+
+                Math.abs(
+                    leafX
+                ) === 2
+
+                &&
+
+                Math.abs(
+                    leafZ
+                ) === 2
+
             ) {
 
                 continue;
@@ -1075,11 +1810,18 @@ function createTree(
             }
 
 
-            leafBlocks.push({
-                x: x + leafX,
-                y: leafBase + 1,
-                z: z + leafZ
-            });
+            addBlock(
+
+                x + leafX,
+
+                leafBase +
+                1,
+
+                z + leafZ,
+
+                "leaves"
+
+            );
 
         }
 
@@ -1087,7 +1829,7 @@ function createTree(
 
 
     // ==================================================
-    // TOP LEAVES
+    // UPPER LEAVES
     // ==================================================
 
     for (
@@ -1102,22 +1844,868 @@ function createTree(
             leafZ++
         ) {
 
-            leafBlocks.push({
-                x: x + leafX,
-                y: leafBase + 2,
-                z: z + leafZ
-            });
+            addBlock(
+
+                x + leafX,
+
+                leafBase +
+                2,
+
+                z + leafZ,
+
+                "leaves"
+
+            );
 
         }
 
     }
 
 
-    leafBlocks.push({
-        x: x,
-        y: leafBase + 3,
-        z: z
-    });
+    addBlock(
+
+        x,
+
+        leafBase +
+        3,
+
+        z,
+
+        "leaves"
+
+    );
+
+}
+
+
+// ======================================================
+// BLOCK COLOR VARIATION
+// ======================================================
+
+function getBlockTint(
+    block
+) {
+
+    const random1 =
+        coordinateRandom(
+
+            block.x * 7 +
+            block.y * 3,
+
+            block.z * 11
+
+        );
+
+
+    const random2 =
+        coordinateRandom(
+
+            block.x * 17,
+
+            block.z * 5 +
+            block.y * 9
+
+        );
+
+
+    const color =
+        new THREE.Color();
+
+
+    if (
+        block.type ===
+        "grass"
+    ) {
+
+        color.setRGB(
+
+            0.88 +
+            random1 * 0.10,
+
+            0.91 +
+            random2 * 0.09,
+
+            0.87 +
+            random1 * 0.09
+
+        );
+
+    }
+
+    else if (
+        block.type ===
+        "leaves"
+    ) {
+
+        color.setRGB(
+
+            0.82 +
+            random1 * 0.13,
+
+            0.88 +
+            random2 * 0.12,
+
+            0.82 +
+            random1 * 0.12
+
+        );
+
+    }
+
+    else if (
+        block.type ===
+        "wood"
+    ) {
+
+        const shade =
+            0.86 +
+            random1 *
+            0.14;
+
+
+        color.setRGB(
+
+            shade,
+
+            shade *
+            0.96,
+
+            shade *
+            0.90
+
+        );
+
+    }
+
+    else {
+
+        const shade =
+            0.87 +
+            random1 *
+            0.13;
+
+
+        color.setRGB(
+
+            shade,
+
+            shade,
+
+            shade
+
+        );
+
+    }
+
+
+    return color;
+
+}
+
+
+// ======================================================
+// REBUILD ALL BLOCK TYPES
+// ======================================================
+
+function rebuildAllBlocks() {
+
+    rebuildType(
+        "grass"
+    );
+
+    rebuildType(
+        "dirt"
+    );
+
+    rebuildType(
+        "wood"
+    );
+
+    rebuildType(
+        "leaves"
+    );
+
+    rebuildType(
+        "stone"
+    );
+
+}
+
+
+// ======================================================
+// REBUILD ONE BLOCK TYPE
+// ======================================================
+
+function rebuildType(
+    type
+) {
+
+    const oldMesh =
+        renderMeshes[
+            type
+        ];
+
+
+    if (oldMesh) {
+
+        scene.remove(
+            oldMesh
+        );
+
+
+        if (
+            typeof oldMesh.dispose ===
+            "function"
+        ) {
+
+            oldMesh.dispose();
+
+        }
+
+    }
+
+
+    const blocks =
+        Array.from(
+
+            blocksByType[
+                type
+            ].values()
+
+        );
+
+
+    if (
+        blocks.length === 0
+    ) {
+
+        renderMeshes[
+            type
+        ] = null;
+
+
+        return;
+
+    }
+
+
+    const mesh =
+        new THREE.InstancedMesh(
+
+            blockGeometry,
+
+            materials[
+                type
+            ],
+
+            blocks.length
+
+        );
+
+
+    const dummy =
+        new THREE.Object3D();
+
+
+    for (
+        let i = 0;
+        i < blocks.length;
+        i++
+    ) {
+
+        const block =
+            blocks[i];
+
+
+        dummy.position.set(
+
+            block.x,
+
+            block.y,
+
+            block.z
+
+        );
+
+
+        dummy.updateMatrix();
+
+
+        mesh.setMatrixAt(
+
+            i,
+
+            dummy.matrix
+
+        );
+
+
+        const tint =
+            getBlockTint(
+                block
+            );
+
+
+        mesh.setColorAt(
+
+            i,
+
+            tint
+
+        );
+
+    }
+
+
+    mesh.instanceMatrix.needsUpdate =
+        true;
+
+
+    if (
+        mesh.instanceColor
+    ) {
+
+        mesh.instanceColor.needsUpdate =
+            true;
+
+    }
+
+
+    mesh.userData.blocks =
+        blocks;
+
+
+    mesh.userData.blockType =
+        type;
+
+
+    mesh.computeBoundingSphere();
+
+
+    scene.add(
+        mesh
+    );
+
+
+    renderMeshes[
+        type
+    ] = mesh;
+
+}
+
+
+// ======================================================
+// FIND BLOCK PLAYER IS LOOKING AT
+// ======================================================
+
+function getTargetBlock() {
+
+    raycaster.setFromCamera(
+
+        screenCenter,
+
+        camera
+
+    );
+
+
+    const meshes =
+
+        Object.values(
+            renderMeshes
+        )
+
+        .filter(
+            mesh => mesh !== null
+        );
+
+
+    const hits =
+
+        raycaster.intersectObjects(
+
+            meshes,
+
+            false
+
+        );
+
+
+    if (
+        hits.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    for (
+        const hit of hits
+    ) {
+
+        if (
+            hit.instanceId ===
+            undefined
+        ) {
+
+            continue;
+
+        }
+
+
+        const block =
+
+            hit.object
+                .userData
+                .blocks[
+                    hit.instanceId
+                ];
+
+
+        if (!block) {
+
+            continue;
+
+        }
+
+
+        return {
+
+            block: block,
+
+            hit: hit
+
+        };
+
+    }
+
+
+    return null;
+
+}
+
+
+// ======================================================
+// BREAK BLOCK
+// ======================================================
+
+function breakTargetBlock() {
+
+    const target =
+        getTargetBlock();
+
+
+    if (!target) {
+
+        return;
+
+    }
+
+
+    const block =
+        target.block;
+
+
+    const removed =
+        removeBlock(
+
+            block.x,
+
+            block.y,
+
+            block.z
+
+        );
+
+
+    if (!removed) {
+
+        return;
+
+    }
+
+
+    rebuildType(
+        removed.type
+    );
+
+}
+
+
+// ======================================================
+// PLACE BLOCK
+// ======================================================
+
+function placeTargetBlock() {
+
+    const target =
+        getTargetBlock();
+
+
+    if (!target) {
+
+        return;
+
+    }
+
+
+    if (
+        !target.hit.face
+    ) {
+
+        return;
+
+    }
+
+
+    const block =
+        target.block;
+
+
+    const normal =
+        target.hit.face.normal;
+
+
+    const normalX =
+        Math.round(
+            normal.x
+        );
+
+
+    const normalY =
+        Math.round(
+            normal.y
+        );
+
+
+    const normalZ =
+        Math.round(
+            normal.z
+        );
+
+
+    const placeX =
+
+        block.x +
+        normalX;
+
+
+    const placeY =
+
+        block.y +
+        normalY;
+
+
+    const placeZ =
+
+        block.z +
+        normalZ;
+
+
+    // ==================================================
+    // WORLD LIMIT
+    // ==================================================
+
+    if (
+
+        Math.abs(
+            placeX
+        ) > worldSize
+
+        ||
+
+        Math.abs(
+            placeZ
+        ) > worldSize
+
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+
+        placeY <
+        -10
+
+        ||
+
+        placeY >
+        40
+
+    ) {
+
+        return;
+
+    }
+
+
+    // ==================================================
+    // BLOCK ALREADY THERE
+    // ==================================================
+
+    if (
+        blockExists(
+
+            placeX,
+
+            placeY,
+
+            placeZ
+
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    // ==================================================
+    // DON'T PLACE INSIDE PLAYER
+    // ==================================================
+
+    if (
+        blockWouldHitPlayer(
+
+            placeX,
+
+            placeY,
+
+            placeZ
+
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    const selectedType =
+
+        hotbarTypes[
+            selectedHotbarIndex
+        ];
+
+
+    const added =
+        addBlock(
+
+            placeX,
+
+            placeY,
+
+            placeZ,
+
+            selectedType
+
+        );
+
+
+    if (
+        added
+    ) {
+
+        rebuildType(
+            selectedType
+        );
+
+    }
+
+}
+
+
+// ======================================================
+// MOVE PLAYER ON ONE AXIS
+// ======================================================
+
+function moveHorizontalAxis(
+    axis,
+    amount
+) {
+
+    if (
+        amount === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const maxStep =
+        0.08;
+
+
+    const steps =
+        Math.ceil(
+
+            Math.abs(
+                amount
+            ) /
+
+            maxStep
+
+        );
+
+
+    const step =
+        amount /
+        steps;
+
+
+    for (
+        let i = 0;
+        i < steps;
+        i++
+    ) {
+
+        let testX =
+            camera.position.x;
+
+        let testZ =
+            camera.position.z;
+
+
+        if (
+            axis === "x"
+        ) {
+
+            testX +=
+                step;
+
+        }
+
+
+        if (
+            axis === "z"
+        ) {
+
+            testZ +=
+                step;
+
+        }
+
+
+        if (
+            playerCollides(
+
+                testX,
+
+                camera.position.y,
+
+                testZ
+
+            )
+        ) {
+
+            break;
+
+        }
+
+
+        camera.position.x =
+            testX;
+
+
+        camera.position.z =
+            testZ;
+
+    }
+
+}
+
+
+// ======================================================
+// VERTICAL MOVEMENT
+// ======================================================
+
+function moveVertical(
+    amount
+) {
+
+    if (
+        amount === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const maxStep =
+        0.04;
+
+
+    const steps =
+        Math.ceil(
+
+            Math.abs(
+                amount
+            ) /
+
+            maxStep
+
+        );
+
+
+    const step =
+        amount /
+        steps;
+
+
+    for (
+        let i = 0;
+        i < steps;
+        i++
+    ) {
+
+        const testY =
+
+            camera.position.y +
+
+            step;
+
+
+        if (
+            playerCollides(
+
+                camera.position.x,
+
+                testY,
+
+                camera.position.z
+
+            )
+        ) {
+
+            if (
+                step < 0
+            ) {
+
+                onGround =
+                    true;
+
+            }
+
+
+            verticalVelocity =
+                0;
+
+
+            return;
+
+        }
+
+
+        camera.position.y =
+            testY;
+
+    }
 
 }
 
@@ -1126,27 +2714,47 @@ function createTree(
 // PLAYER MOVEMENT
 // ======================================================
 
-function updateMovement(delta) {
+function updateMovement(
+    delta
+) {
 
     const forward =
         new THREE.Vector3(
-            -Math.sin(yaw),
+
+            -Math.sin(
+                yaw
+            ),
+
             0,
-            -Math.cos(yaw)
+
+            -Math.cos(
+                yaw
+            )
+
         );
 
 
     const right =
         new THREE.Vector3(
-            Math.cos(yaw),
+
+            Math.cos(
+                yaw
+            ),
+
             0,
-            -Math.sin(yaw)
+
+            -Math.sin(
+                yaw
+            )
+
         );
 
 
     const movement =
         new THREE.Vector3();
 
+
+    // W
 
     if (
         keys["KeyW"]
@@ -1159,6 +2767,8 @@ function updateMovement(delta) {
     }
 
 
+    // S
+
     if (
         keys["KeyS"]
     ) {
@@ -1170,6 +2780,8 @@ function updateMovement(delta) {
     }
 
 
+    // D
+
     if (
         keys["KeyD"]
     ) {
@@ -1180,6 +2792,8 @@ function updateMovement(delta) {
 
     }
 
+
+    // A
 
     if (
         keys["KeyA"]
@@ -1193,62 +2807,38 @@ function updateMovement(delta) {
 
 
     if (
-        movement.lengthSq() > 0
+        movement.lengthSq() >
+        0
     ) {
 
         movement.normalize();
 
 
         movement.multiplyScalar(
+
             moveSpeed *
+
             delta
+
         );
 
 
-        // ==============================================
-        // X COLLISION
-        // ==============================================
+        moveHorizontalAxis(
 
-        const nextX =
-            camera.position.x +
-            movement.x;
+            "x",
 
+            movement.x
 
-        if (
-            !playerHitsTree(
-                nextX,
-                camera.position.y,
-                camera.position.z
-            )
-        ) {
-
-            camera.position.x =
-                nextX;
-
-        }
+        );
 
 
-        // ==============================================
-        // Z COLLISION
-        // ==============================================
+        moveHorizontalAxis(
 
-        const nextZ =
-            camera.position.z +
-            movement.z;
+            "z",
 
+            movement.z
 
-        if (
-            !playerHitsTree(
-                camera.position.x,
-                camera.position.y,
-                nextZ
-            )
-        ) {
-
-            camera.position.z =
-                nextZ;
-
-        }
+        );
 
     }
 
@@ -1258,139 +2848,71 @@ function updateMovement(delta) {
     // ==================================================
 
     const mapEdge =
+
         worldSize -
+
         0.5;
 
 
     camera.position.x =
+
         Math.max(
+
             -mapEdge,
+
             Math.min(
+
                 mapEdge,
+
                 camera.position.x
+
             )
+
         );
 
 
     camera.position.z =
+
         Math.max(
+
             -mapEdge,
+
             Math.min(
+
                 mapEdge,
+
                 camera.position.z
+
             )
+
         );
-
-
-    // ==================================================
-    // TERRAIN BELOW PLAYER
-    // ==================================================
-
-    const blockX =
-        Math.round(
-            camera.position.x
-        );
-
-
-    const blockZ =
-        Math.round(
-            camera.position.z
-        );
-
-
-    const terrainHeight =
-        getTerrainHeight(
-            blockX,
-            blockZ
-        );
-
-
-    const standingHeight =
-        terrainHeight +
-        0.5 +
-        eyeHeight;
 
 
     // ==================================================
     // GRAVITY
     // ==================================================
 
+    onGround =
+        false;
+
+
     verticalVelocity -=
+
         gravity *
+
         delta;
 
 
-    const nextY =
-        camera.position.y +
+    const verticalMovement =
+
         verticalVelocity *
+
         delta;
 
 
-    // ==================================================
-    // VERTICAL TREE COLLISION
-    // ==================================================
-
-    if (
-        playerHitsTree(
-            camera.position.x,
-            nextY,
-            camera.position.z
-        )
-    ) {
-
-        if (
-            verticalVelocity < 0
-        ) {
-
-            onGround =
-                true;
-
-        }
-
-
-        verticalVelocity =
-            0;
-
-    }
-
-    else {
-
-        camera.position.y =
-            nextY;
-
-    }
-
-
-    // ==================================================
-    // TERRAIN COLLISION
-    // ==================================================
-
-    if (
-        camera.position.y <=
-        standingHeight
-    ) {
-
-        camera.position.y =
-            standingHeight;
-
-
-        verticalVelocity =
-            0;
-
-
-        onGround =
-            true;
-
-    }
-
-    else if (
-        verticalVelocity !== 0
-    ) {
-
-        onGround =
-            false;
-
-    }
+    moveVertical(
+        verticalMovement
+    );
 
 }
 
@@ -1408,8 +2930,11 @@ function animate() {
 
     const delta =
         Math.min(
+
             clock.getDelta(),
+
             0.05
+
         );
 
 
@@ -1419,8 +2944,11 @@ function animate() {
 
 
     renderer.render(
+
         scene,
+
         camera
+
     );
 
 }
@@ -1435,8 +2963,11 @@ window.addEventListener(
     () => {
 
         if (
+
             !camera ||
+
             !renderer
+
         ) {
 
             return;
@@ -1445,7 +2976,9 @@ window.addEventListener(
 
 
         camera.aspect =
+
             window.innerWidth /
+
             window.innerHeight;
 
 
@@ -1453,8 +2986,11 @@ window.addEventListener(
 
 
         renderer.setSize(
+
             window.innerWidth,
+
             window.innerHeight
+
         );
 
     }
