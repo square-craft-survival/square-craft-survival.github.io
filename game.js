@@ -1,6 +1,6 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js";
 
-console.log("SQUARE CRAFT SURVIVAL - BREAKING + PLACING VERSION");
+console.log("SQUARE CRAFT SURVIVAL - BLOCKS + BEDROCK VERSION");
 
 // ======================================================
 // HTML
@@ -9,28 +9,20 @@ console.log("SQUARE CRAFT SURVIVAL - BREAKING + PLACING VERSION");
 const playButton = document.getElementById("playButton");
 const startScreen = document.getElementById("startScreen");
 const gameContainer = document.getElementById("game");
-
-const hotbarSlots =
-    Array.from(document.querySelectorAll(".slot"));
+const hotbarSlots = Array.from(document.querySelectorAll(".slot"));
 
 gameContainer.style.display = "none";
 
-
 // ======================================================
-// THREE.JS
+// THREE.JS / PLAYER
 // ======================================================
 
 let scene;
 let camera;
 let renderer;
 let clock;
-
 let blockGeometry;
-
-
-// ======================================================
-// PLAYER
-// ======================================================
+let materials = {};
 
 const keys = {};
 
@@ -38,7 +30,6 @@ let yaw = 0;
 let pitch = 0;
 
 const moveSpeed = 7;
-
 const gravity = 20;
 const jumpPower = 7.5;
 
@@ -49,88 +40,65 @@ const playerRadius = 0.32;
 let verticalVelocity = 0;
 let onGround = false;
 
-
 // ======================================================
 // WORLD
 // ======================================================
 
 const worldSize = 60;
 
-const worldBlocks =
-    new Map();
+const bedrockY = -4;
+
+const worldBlocks = new Map();
+
+const allBlockTypes = [
+    "grass",
+    "dirt",
+    "wood",
+    "leaves",
+    "stone",
+    "bedrock"
+];
 
 const blocksByType = {
-
     grass: new Map(),
-
     dirt: new Map(),
-
     wood: new Map(),
-
     leaves: new Map(),
-
-    stone: new Map()
-
+    stone: new Map(),
+    bedrock: new Map()
 };
-
-
-// ======================================================
-// RENDERED BLOCK MESHES
-// ======================================================
 
 const renderMeshes = {
-
     grass: null,
-
     dirt: null,
-
     wood: null,
-
     leaves: null,
-
-    stone: null
-
+    stone: null,
+    bedrock: null
 };
 
-
-let materials = {};
-
-
 // ======================================================
-// BLOCK INTERACTION
-// ======================================================
-
-const raycaster =
-    new THREE.Raycaster();
-
-const screenCenter =
-    new THREE.Vector2(
-        0,
-        0
-    );
-
-const blockReach = 6;
-
-raycaster.far =
-    blockReach;
-
-
-// ======================================================
-// HOTBAR
+// HOTBAR / RAYCASTING
 // ======================================================
 
 const hotbarTypes = [
-
     "grass",
     "dirt",
     "wood",
     "leaves",
     "stone"
-
 ];
 
 let selectedHotbarIndex = 0;
 
+const raycaster = new THREE.Raycaster();
+
+const screenCenter = new THREE.Vector2(
+    0,
+    0
+);
+
+raycaster.far = 6;
 
 // ======================================================
 // BLOCK NAME LABEL
@@ -173,9 +141,8 @@ gameContainer.appendChild(
     blockNameLabel
 );
 
-
 // ======================================================
-// BLOCK KEY
+// BASIC BLOCK HELPERS
 // ======================================================
 
 function blockKey(
@@ -187,11 +154,6 @@ function blockKey(
     return `${x},${y},${z}`;
 
 }
-
-
-// ======================================================
-// ADD BLOCK
-// ======================================================
 
 function addBlock(
     x,
@@ -207,7 +169,6 @@ function addBlock(
             z
         );
 
-
     if (
         worldBlocks.has(key)
     ) {
@@ -216,38 +177,26 @@ function addBlock(
 
     }
 
-
     const block = {
-
-        x: x,
-        y: y,
-        z: z,
-
-        type: type
-
+        x,
+        y,
+        z,
+        type
     };
-
 
     worldBlocks.set(
         key,
         block
     );
 
-
     blocksByType[type].set(
         key,
         block
     );
 
-
     return true;
 
 }
-
-
-// ======================================================
-// REMOVE BLOCK
-// ======================================================
 
 function removeBlock(
     x,
@@ -262,22 +211,21 @@ function removeBlock(
             z
         );
 
-
     const block =
         worldBlocks.get(key);
 
-
-    if (!block) {
+    if (
+        !block ||
+        block.type === "bedrock"
+    ) {
 
         return null;
 
     }
 
-
     worldBlocks.delete(
         key
     );
-
 
     blocksByType[
         block.type
@@ -285,15 +233,9 @@ function removeBlock(
         key
     );
 
-
     return block;
 
 }
-
-
-// ======================================================
-// CHECK FOR BLOCK
-// ======================================================
 
 function blockExists(
     x,
@@ -311,6 +253,401 @@ function blockExists(
 
 }
 
+// ======================================================
+// TERRAIN
+// ======================================================
+
+function getTerrainHeight(
+    x,
+    z
+) {
+
+    const wave1 =
+        Math.sin(
+            x * 0.11
+        ) * 2.2;
+
+    const wave2 =
+        Math.cos(
+            z * 0.10
+        ) * 2.0;
+
+    const wave3 =
+        Math.sin(
+            (x + z) *
+            0.065
+        ) * 1.6;
+
+    const wave4 =
+        Math.cos(
+            (x - z) *
+            0.045
+        ) * 1.2;
+
+    let height =
+        Math.floor(
+            3 +
+            wave1 +
+            wave2 +
+            wave3 +
+            wave4
+        );
+
+    return Math.max(
+        0,
+        Math.min(
+            8,
+            height
+        )
+    );
+
+}
+
+// ======================================================
+// COORDINATE RANDOM
+// ======================================================
+
+function coordinateRandom(
+    x,
+    z
+) {
+
+    const value =
+        Math.sin(
+            x * 12.9898 +
+            z * 78.233
+        ) *
+        43758.5453;
+
+    return value -
+        Math.floor(value);
+
+}
+
+// ======================================================
+// TREE SPAWN
+// ======================================================
+
+function canTreeSpawn(
+    x,
+    z
+) {
+
+    const spawnX = 0;
+    const spawnZ = 8;
+
+    const distance =
+        Math.hypot(
+            x - spawnX,
+            z - spawnZ
+        );
+
+    if (
+        distance < 8
+    ) {
+
+        return false;
+
+    }
+
+    if (
+        Math.abs(x) >
+        worldSize - 4
+        ||
+        Math.abs(z) >
+        worldSize - 4
+    ) {
+
+        return false;
+
+    }
+
+    const center =
+        getTerrainHeight(
+            x,
+            z
+        );
+
+    const north =
+        getTerrainHeight(
+            x,
+            z - 1
+        );
+
+    const south =
+        getTerrainHeight(
+            x,
+            z + 1
+        );
+
+    const east =
+        getTerrainHeight(
+            x + 1,
+            z
+        );
+
+    const west =
+        getTerrainHeight(
+            x - 1,
+            z
+        );
+
+    return (
+
+        Math.abs(
+            center - north
+        ) <= 1
+
+        &&
+
+        Math.abs(
+            center - south
+        ) <= 1
+
+        &&
+
+        Math.abs(
+            center - east
+        ) <= 1
+
+        &&
+
+        Math.abs(
+            center - west
+        ) <= 1
+
+    );
+
+}
+
+// ======================================================
+// PIXEL TEXTURE HELPERS
+// ======================================================
+
+function finishPixelTexture(
+    canvas
+) {
+
+    const texture =
+        new THREE.CanvasTexture(
+            canvas
+        );
+
+    texture.magFilter =
+        THREE.NearestFilter;
+
+    texture.minFilter =
+        THREE.NearestFilter;
+
+    texture.generateMipmaps =
+        false;
+
+    return texture;
+
+}
+
+// ======================================================
+// SPECKLED PIXEL TEXTURE
+// ======================================================
+
+function createSpeckledTexture(
+    base,
+    light,
+    dark,
+    amount = 34
+) {
+
+    const canvas =
+        document.createElement(
+            "canvas"
+        );
+
+    canvas.width = 16;
+    canvas.height = 16;
+
+    const ctx =
+        canvas.getContext(
+            "2d"
+        );
+
+    ctx.fillStyle =
+        base;
+
+    ctx.fillRect(
+        0,
+        0,
+        16,
+        16
+    );
+
+    for (
+        let i = 0;
+        i < amount;
+        i++
+    ) {
+
+        const x =
+            (
+                i * 7 +
+                3
+            ) % 16;
+
+        const y =
+            (
+                i * 11 +
+                5
+            ) % 16;
+
+        ctx.fillStyle =
+            i % 2 === 0
+                ? light
+                : dark;
+
+        ctx.fillRect(
+            x,
+            y,
+            1,
+            1
+        );
+
+    }
+
+    return finishPixelTexture(
+        canvas
+    );
+
+}
+
+// ======================================================
+// GRASS SIDE TEXTURE
+// ======================================================
+
+function createGrassSideTexture() {
+
+    const canvas =
+        document.createElement(
+            "canvas"
+        );
+
+    canvas.width = 16;
+    canvas.height = 16;
+
+    const ctx =
+        canvas.getContext(
+            "2d"
+        );
+
+
+    // ==============================
+    // BOTTOM 75% = DIRT
+    // ==============================
+
+    ctx.fillStyle =
+        "#795235";
+
+    ctx.fillRect(
+        0,
+        0,
+        16,
+        16
+    );
+
+
+    // ==============================
+    // TOP 25% = GRASS
+    // ==============================
+
+    ctx.fillStyle =
+        "#61b84a";
+
+    ctx.fillRect(
+        0,
+        0,
+        16,
+        4
+    );
+
+
+    // ==============================
+    // DIRT PIXELS
+    // ==============================
+
+    for (
+        let i = 0;
+        i < 22;
+        i++
+    ) {
+
+        const x =
+            (
+                i * 5 +
+                2
+            ) % 16;
+
+        const y =
+            4 +
+            (
+                (
+                    i * 9 +
+                    1
+                ) % 12
+            );
+
+        ctx.fillStyle =
+            i % 2 === 0
+                ? "#875f3e"
+                : "#68462e";
+
+        ctx.fillRect(
+            x,
+            y,
+            1,
+            1
+        );
+
+    }
+
+
+    // ==============================
+    // GRASS PIXELS
+    // ==============================
+
+    for (
+        let i = 0;
+        i < 12;
+        i++
+    ) {
+
+        const x =
+            (
+                i * 7 +
+                1
+            ) % 16;
+
+        const y =
+            (
+                i * 3
+            ) % 4;
+
+        ctx.fillStyle =
+            i % 2 === 0
+                ? "#72c957"
+                : "#4d9b3a";
+
+        ctx.fillRect(
+            x,
+            y,
+            1,
+            1
+        );
+
+    }
+
+    return finishPixelTexture(
+        canvas
+    );
+
+}
 
 // ======================================================
 // PLAY BUTTON
@@ -331,236 +668,1245 @@ playButton.addEventListener(
     }
 );
 
-
 // ======================================================
-// TERRAIN HEIGHT
+// START GAME
 // ======================================================
 
-function getTerrainHeight(
-    x,
-    z
-) {
+function startGame() {
 
-    const wave1 =
-        Math.sin(
-            x * 0.11
-        ) * 2.2;
+    // ==============================
+    // SCENE
+    // ==============================
 
+    scene =
+        new THREE.Scene();
 
-    const wave2 =
-        Math.cos(
-            z * 0.10
-        ) * 2.0;
+    scene.background =
+        new THREE.Color(
+            0x79c9f2
+        );
 
-
-    const wave3 =
-        Math.sin(
-            (x + z) *
-            0.065
-        ) * 1.6;
-
-
-    const wave4 =
-        Math.cos(
-            (x - z) *
-            0.045
-        ) * 1.2;
-
-
-    let height =
-
-        3 +
-
-        wave1 +
-
-        wave2 +
-
-        wave3 +
-
-        wave4;
-
-
-    height =
-        Math.floor(
-            height
+    scene.fog =
+        new THREE.Fog(
+            0x79c9f2,
+            55,
+            120
         );
 
 
-    height =
-        Math.max(
+    // ==============================
+    // CAMERA
+    // ==============================
 
-            0,
+    camera =
+        new THREE.PerspectiveCamera(
 
-            Math.min(
-                8,
-                height
-            )
+            75,
+
+            window.innerWidth /
+            window.innerHeight,
+
+            0.1,
+
+            500
+
+        );
+
+    camera.rotation.order =
+        "YXZ";
+
+
+    // ==============================
+    // RENDERER
+    // ==============================
+
+    renderer =
+        new THREE.WebGLRenderer({
+
+            antialias: false
+
+        });
+
+    renderer.setSize(
+
+        window.innerWidth,
+
+        window.innerHeight
+
+    );
+
+    renderer.setPixelRatio(
+
+        Math.min(
+
+            window.devicePixelRatio,
+
+            2
+
+        )
+
+    );
+
+    gameContainer.appendChild(
+        renderer.domElement
+    );
+
+
+    // ==============================
+    // LIGHTING
+    // ==============================
+
+    const sunlight =
+        new THREE.DirectionalLight(
+
+            0xffffff,
+
+            2.3
+
+        );
+
+    sunlight.position.set(
+
+        40,
+
+        70,
+
+        25
+
+    );
+
+    scene.add(
+        sunlight
+    );
+
+    scene.add(
+
+        new THREE.AmbientLight(
+
+            0xffffff,
+
+            1.1
+
+        )
+
+    );
+
+
+    // ==============================
+    // TEXTURES
+    // ==============================
+
+    const grassTopTexture =
+        createSpeckledTexture(
+
+            "#61b84a",
+
+            "#70c957",
+
+            "#4f9d3d",
+
+            38
+
+        );
+
+    const grassSideTexture =
+        createGrassSideTexture();
+
+    const dirtTexture =
+        createSpeckledTexture(
+
+            "#795235",
+
+            "#8a6040",
+
+            "#64432d",
+
+            42
+
+        );
+
+    const stoneTexture =
+        createSpeckledTexture(
+
+            "#777777",
+
+            "#8b8b8b",
+
+            "#626262",
+
+            45
+
+        );
+
+    const woodTexture =
+        createSpeckledTexture(
+
+            "#765030",
+
+            "#8a6040",
+
+            "#5f4029",
+
+            28
+
+        );
+
+    const leavesTexture =
+        createSpeckledTexture(
+
+            "#357a32",
+
+            "#438f3e",
+
+            "#286528",
+
+            40
+
+        );
+
+    const bedrockTexture =
+        createSpeckledTexture(
+
+            "#303030",
+
+            "#474747",
+
+            "#1f1f1f",
+
+            55
 
         );
 
 
-    return height;
+    // ==============================
+    // MATERIALS
+    // ==============================
 
-}
+    const grassTopMaterial =
+        new THREE.MeshLambertMaterial({
+
+            map:
+                grassTopTexture
+
+        });
+
+    const grassSideMaterial =
+        new THREE.MeshLambertMaterial({
+
+            map:
+                grassSideTexture
+
+        });
+
+    const dirtMaterial =
+        new THREE.MeshLambertMaterial({
+
+            map:
+                dirtTexture
+
+        });
+
+    const stoneMaterial =
+        new THREE.MeshLambertMaterial({
+
+            map:
+                stoneTexture
+
+        });
+
+    const woodMaterial =
+        new THREE.MeshLambertMaterial({
+
+            map:
+                woodTexture
+
+        });
+
+    const leavesMaterial =
+        new THREE.MeshLambertMaterial({
+
+            map:
+                leavesTexture
+
+        });
+
+    const bedrockMaterial =
+        new THREE.MeshLambertMaterial({
+
+            map:
+                bedrockTexture
+
+        });
 
 
-// ======================================================
-// COORDINATE RANDOM
-// ======================================================
+    // right, left, top, bottom, front, back
 
-function coordinateRandom(
-    x,
-    z
-) {
+    const grassMaterials = [
 
-    const value =
+        grassSideMaterial,
 
-        Math.sin(
+        grassSideMaterial,
 
-            x * 12.9898 +
+        grassTopMaterial,
 
-            z * 78.233
+        dirtMaterial,
 
-        ) *
+        grassSideMaterial,
 
-        43758.5453;
+        grassSideMaterial
+
+    ];
 
 
-    return value -
-        Math.floor(value);
+    materials = {
 
-}
+        grass:
+            grassMaterials,
+
+        dirt:
+            dirtMaterial,
+
+        wood:
+            woodMaterial,
+
+        leaves:
+            leavesMaterial,
+
+        stone:
+            stoneMaterial,
+
+        bedrock:
+            bedrockMaterial
+
+    };
 
 
-// ======================================================
-// TREE SPAWN CHECK
-// ======================================================
+    // ==============================
+    // BLOCK GEOMETRY
+    // ==============================
 
-function canTreeSpawn(
-    x,
-    z
-) {
+    blockGeometry =
+        new THREE.BoxGeometry(
+            1,
+            1,
+            1
+        );
+
+
+    // ==============================
+    // GENERATE WORLD
+    // ==============================
+
+    generateWorld();
+
+
+    // ==============================
+    // SPAWN
+    // ==============================
 
     const spawnX = 0;
     const spawnZ = 8;
 
+    const spawnHeight =
+        getTerrainHeight(
+            spawnX,
+            spawnZ
+        );
 
-    const distance =
+    camera.position.set(
 
-        Math.sqrt(
+        spawnX,
 
-            Math.pow(
-                x - spawnX,
-                2
-            ) +
+        spawnHeight +
+        0.5 +
+        eyeHeight,
 
-            Math.pow(
-                z - spawnZ,
-                2
+        spawnZ
+
+    );
+
+
+    // ==============================
+    // CONTROLS
+    // ==============================
+
+    setupControls();
+
+    updateHotbar();
+
+
+    // ==============================
+    // CLOCK
+    // ==============================
+
+    clock =
+        new THREE.Clock();
+
+    animate();
+
+}
+
+// ======================================================
+// GENERATE WORLD
+// ======================================================
+
+function generateWorld() {
+
+    worldBlocks.clear();
+
+    for (
+        const type of
+        allBlockTypes
+    ) {
+
+        blocksByType[
+            type
+        ].clear();
+
+    }
+
+
+    // ==============================
+    // TERRAIN
+    // ==============================
+
+    for (
+        let x = -worldSize;
+        x <= worldSize;
+        x++
+    ) {
+
+        for (
+            let z = -worldSize;
+            z <= worldSize;
+            z++
+        ) {
+
+            const height =
+                getTerrainHeight(
+                    x,
+                    z
+                );
+
+
+            // GRASS
+
+            addBlock(
+
+                x,
+
+                height,
+
+                z,
+
+                "grass"
+
+            );
+
+
+            // DIRT
+
+            addBlock(
+
+                x,
+
+                height - 1,
+
+                z,
+
+                "dirt"
+
+            );
+
+            addBlock(
+
+                x,
+
+                height - 2,
+
+                z,
+
+                "dirt"
+
+            );
+
+
+            // STONE DOWN TO BEDROCK
+
+            for (
+                let y =
+                    height - 3;
+
+                y > bedrockY;
+
+                y--
+            ) {
+
+                addBlock(
+
+                    x,
+
+                    y,
+
+                    z,
+
+                    "stone"
+
+                );
+
+            }
+
+
+            // BEDROCK FLOOR
+
+            addBlock(
+
+                x,
+
+                bedrockY,
+
+                z,
+
+                "bedrock"
+
+            );
+
+        }
+
+    }
+
+
+    // ==============================
+    // TREES
+    // ==============================
+
+    for (
+        let x = -worldSize;
+        x <= worldSize;
+        x++
+    ) {
+
+        for (
+            let z = -worldSize;
+            z <= worldSize;
+            z++
+        ) {
+
+            if (
+
+                coordinateRandom(
+                    x,
+                    z
+                ) < 0.027
+
+                &&
+
+                canTreeSpawn(
+                    x,
+                    z
+                )
+
+            ) {
+
+                createTree(
+
+                    x,
+
+                    getTerrainHeight(
+                        x,
+                        z
+                    ),
+
+                    z
+
+                );
+
+            }
+
+        }
+
+    }
+
+    rebuildAllBlocks();
+
+}
+
+// ======================================================
+// CREATE TREE
+// ======================================================
+
+function createTree(
+    x,
+    groundHeight,
+    z
+) {
+
+    const random =
+        coordinateRandom(
+
+            x + 500,
+
+            z + 500
+
+        );
+
+    const trunkHeight =
+        random > 0.5
+            ? 5
+            : 4;
+
+
+    // TRUNK
+
+    for (
+        let y = 1;
+        y <= trunkHeight;
+        y++
+    ) {
+
+        addBlock(
+
+            x,
+
+            groundHeight +
+            y,
+
+            z,
+
+            "wood"
+
+        );
+
+    }
+
+
+    const leafBase =
+        groundHeight +
+        trunkHeight;
+
+
+    // LOWER LEAVES
+
+    for (
+        let lx = -2;
+        lx <= 2;
+        lx++
+    ) {
+
+        for (
+            let lz = -2;
+            lz <= 2;
+            lz++
+        ) {
+
+            if (
+                Math.abs(lx) === 2 &&
+                Math.abs(lz) === 2
+            ) {
+
+                continue;
+
+            }
+
+            if (
+                lx === 0 &&
+                lz === 0
+            ) {
+
+                continue;
+
+            }
+
+            addBlock(
+
+                x + lx,
+
+                leafBase,
+
+                z + lz,
+
+                "leaves"
+
+            );
+
+        }
+
+    }
+
+
+    // MIDDLE LEAVES
+
+    for (
+        let lx = -2;
+        lx <= 2;
+        lx++
+    ) {
+
+        for (
+            let lz = -2;
+            lz <= 2;
+            lz++
+        ) {
+
+            if (
+                Math.abs(lx) === 2 &&
+                Math.abs(lz) === 2
+            ) {
+
+                continue;
+
+            }
+
+            addBlock(
+
+                x + lx,
+
+                leafBase + 1,
+
+                z + lz,
+
+                "leaves"
+
+            );
+
+        }
+
+    }
+
+
+    // TOP LEAVES
+
+    for (
+        let lx = -1;
+        lx <= 1;
+        lx++
+    ) {
+
+        for (
+            let lz = -1;
+            lz <= 1;
+            lz++
+        ) {
+
+            addBlock(
+
+                x + lx,
+
+                leafBase + 2,
+
+                z + lz,
+
+                "leaves"
+
+            );
+
+        }
+
+    }
+
+    addBlock(
+
+        x,
+
+        leafBase + 3,
+
+        z,
+
+        "leaves"
+
+    );
+
+}
+
+// ======================================================
+// BLOCK VARIATION
+// ======================================================
+
+function getBlockTint(
+    block
+) {
+
+    const random =
+        coordinateRandom(
+
+            block.x * 7 +
+            block.y * 3,
+
+            block.z * 11
+
+        );
+
+    const shade =
+        0.94 +
+        random *
+        0.12;
+
+    return new THREE.Color(
+
+        shade,
+
+        shade,
+
+        shade
+
+    );
+
+}
+
+// ======================================================
+// REBUILD BLOCKS
+// ======================================================
+
+function rebuildAllBlocks() {
+
+    for (
+        const type of
+        allBlockTypes
+    ) {
+
+        rebuildType(
+            type
+        );
+
+    }
+
+}
+
+function rebuildType(
+    type
+) {
+
+    const oldMesh =
+        renderMeshes[
+            type
+        ];
+
+    if (
+        oldMesh
+    ) {
+
+        scene.remove(
+            oldMesh
+        );
+
+    }
+
+
+    const blocks =
+        Array.from(
+
+            blocksByType[
+                type
+            ].values()
+
+        );
+
+
+    if (
+        blocks.length === 0
+    ) {
+
+        renderMeshes[
+            type
+        ] = null;
+
+        return;
+
+    }
+
+
+    const mesh =
+        new THREE.InstancedMesh(
+
+            blockGeometry,
+
+            materials[
+                type
+            ],
+
+            blocks.length
+
+        );
+
+
+    const dummy =
+        new THREE.Object3D();
+
+
+    for (
+        let i = 0;
+        i < blocks.length;
+        i++
+    ) {
+
+        const block =
+            blocks[i];
+
+        dummy.position.set(
+
+            block.x,
+
+            block.y,
+
+            block.z
+
+        );
+
+        dummy.updateMatrix();
+
+
+        mesh.setMatrixAt(
+
+            i,
+
+            dummy.matrix
+
+        );
+
+
+        mesh.setColorAt(
+
+            i,
+
+            getBlockTint(
+                block
             )
 
         );
 
+    }
+
+
+    mesh.instanceMatrix.needsUpdate =
+        true;
 
     if (
-        distance < 8
+        mesh.instanceColor
     ) {
 
-        return false;
+        mesh.instanceColor.needsUpdate =
+            true;
 
     }
 
 
-    if (
+    mesh.userData.blocks =
+        blocks;
 
-        Math.abs(x) >
-        worldSize - 4
+    mesh.userData.blockType =
+        type;
 
-        ||
+    mesh.computeBoundingSphere();
 
-        Math.abs(z) >
-        worldSize - 4
+    scene.add(
+        mesh
+    );
 
-    ) {
-
-        return false;
-
-    }
-
-
-    const center =
-        getTerrainHeight(
-            x,
-            z
-        );
-
-
-    const north =
-        getTerrainHeight(
-            x,
-            z - 1
-        );
-
-
-    const south =
-        getTerrainHeight(
-            x,
-            z + 1
-        );
-
-
-    const east =
-        getTerrainHeight(
-            x + 1,
-            z
-        );
-
-
-    const west =
-        getTerrainHeight(
-            x - 1,
-            z
-        );
-
-
-    if (
-
-        Math.abs(
-            center - north
-        ) > 1
-
-        ||
-
-        Math.abs(
-            center - south
-        ) > 1
-
-        ||
-
-        Math.abs(
-            center - east
-        ) > 1
-
-        ||
-
-        Math.abs(
-            center - west
-        ) > 1
-
-    ) {
-
-        return false;
-
-    }
-
-
-    return true;
+    renderMeshes[
+        type
+    ] = mesh;
 
 }
 
+// ======================================================
+// CONTROLS
+// ======================================================
+
+function setupControls() {
+
+    renderer.domElement.addEventListener(
+
+        "click",
+
+        () => {
+
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+
+                renderer.domElement
+                    .requestPointerLock();
+
+            }
+
+        }
+
+    );
+
+
+    renderer.domElement.addEventListener(
+
+        "contextmenu",
+
+        event => {
+
+            event.preventDefault();
+
+        }
+
+    );
+
+
+    // MOUSE LOOK
+
+    document.addEventListener(
+
+        "mousemove",
+
+        event => {
+
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+
+                return;
+
+            }
+
+
+            const sensitivity =
+                0.002;
+
+
+            yaw -=
+                event.movementX *
+                sensitivity;
+
+            pitch -=
+                event.movementY *
+                sensitivity;
+
+
+            const maxPitch =
+                Math.PI / 2 -
+                0.01;
+
+
+            pitch =
+                Math.max(
+
+                    -maxPitch,
+
+                    Math.min(
+
+                        maxPitch,
+
+                        pitch
+
+                    )
+
+                );
+
+
+            camera.rotation.y =
+                yaw;
+
+            camera.rotation.x =
+                pitch;
+
+        }
+
+    );
+
+
+    // KEYBOARD
+
+    document.addEventListener(
+
+        "keydown",
+
+        event => {
+
+            keys[
+                event.code
+            ] = true;
+
+
+            // JUMP
+
+            if (
+                event.code ===
+                "Space"
+            ) {
+
+                event.preventDefault();
+
+
+                if (
+                    onGround
+                ) {
+
+                    verticalVelocity =
+                        jumpPower;
+
+                    onGround =
+                        false;
+
+                }
+
+            }
+
+
+            // HOTBAR
+
+            if (
+                event.code.startsWith(
+                    "Digit"
+                )
+            ) {
+
+                const number =
+                    Number(
+
+                        event.code.substring(
+                            5
+                        )
+
+                    );
+
+                if (
+
+                    number >= 1
+
+                    &&
+
+                    number <=
+                    hotbarTypes.length
+
+                ) {
+
+                    selectedHotbarIndex =
+                        number - 1;
+
+                    updateHotbar();
+
+                }
+
+            }
+
+        }
+
+    );
+
+
+    document.addEventListener(
+
+        "keyup",
+
+        event => {
+
+            keys[
+                event.code
+            ] = false;
+
+        }
+
+    );
+
+
+    // BREAK / PLACE
+
+    renderer.domElement.addEventListener(
+
+        "mousedown",
+
+        event => {
+
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+
+                return;
+
+            }
+
+            if (
+                event.button === 0
+            ) {
+
+                breakTargetBlock();
+
+            }
+
+            if (
+                event.button === 2
+            ) {
+
+                placeTargetBlock();
+
+            }
+
+        }
+
+    );
+
+
+    // MOUSE WHEEL HOTBAR
+
+    renderer.domElement.addEventListener(
+
+        "wheel",
+
+        event => {
+
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+
+                return;
+
+            }
+
+            event.preventDefault();
+
+
+            selectedHotbarIndex +=
+                event.deltaY > 0
+                    ? 1
+                    : -1;
+
+
+            if (
+                selectedHotbarIndex >=
+                hotbarTypes.length
+            ) {
+
+                selectedHotbarIndex =
+                    0;
+
+            }
+
+
+            if (
+                selectedHotbarIndex <
+                0
+            ) {
+
+                selectedHotbarIndex =
+                    hotbarTypes.length -
+                    1;
+
+            }
+
+
+            updateHotbar();
+
+        },
+
+        {
+            passive: false
+        }
+
+    );
+
+}
 
 // ======================================================
-// HOTBAR UPDATE
+// HOTBAR
 // ======================================================
 
 function updateHotbar() {
@@ -571,38 +1917,43 @@ function updateHotbar() {
         i++
     ) {
 
-        hotbarSlots[i]
-            .classList
-            .toggle(
-                "selected",
-                i === selectedHotbarIndex
-            );
+        hotbarSlots[
+            i
+        ].classList.toggle(
+
+            "selected",
+
+            i ===
+            selectedHotbarIndex
+
+        );
 
 
-        hotbarSlots[i].textContent =
+        hotbarSlots[
+            i
+        ].textContent =
             i + 1;
 
 
-        hotbarSlots[i].title =
-            hotbarTypes[i];
+        hotbarSlots[
+            i
+        ].title =
+            hotbarTypes[
+                i
+            ] || "";
 
     }
 
 
-    const selectedType =
+    blockNameLabel.textContent =
         hotbarTypes[
             selectedHotbarIndex
-        ];
-
-
-    blockNameLabel.textContent =
-        selectedType.toUpperCase();
+        ].toUpperCase();
 
 }
 
-
 // ======================================================
-// PLAYER AABB COLLISION
+// COLLISION
 // ======================================================
 
 function playerCollides(
@@ -611,6 +1962,11 @@ function playerCollides(
     testZ
 ) {
 
+    const feetY =
+        testY -
+        eyeHeight;
+
+
     const playerMinX =
         testX -
         playerRadius;
@@ -618,7 +1974,6 @@ function playerCollides(
     const playerMaxX =
         testX +
         playerRadius;
-
 
     const playerMinZ =
         testZ -
@@ -629,18 +1984,17 @@ function playerCollides(
         playerRadius;
 
 
-    const feetY =
-        testY -
-        eyeHeight;
-
+    // Tiny gap prevents the old
+    // "I can only move while jumping" problem
 
     const playerMinY =
-        feetY;
-
+        feetY +
+        0.06;
 
     const playerMaxY =
         feetY +
-        playerHeight;
+        playerHeight -
+        0.05;
 
 
     const minBlockX =
@@ -649,13 +2003,11 @@ function playerCollides(
             0.5
         );
 
-
     const maxBlockX =
         Math.floor(
             playerMaxX +
             0.5
         );
-
 
     const minBlockY =
         Math.ceil(
@@ -663,20 +2015,17 @@ function playerCollides(
             0.5
         );
 
-
     const maxBlockY =
         Math.floor(
             playerMaxY +
             0.5
         );
 
-
     const minBlockZ =
         Math.ceil(
             playerMinZ -
             0.5
         );
-
 
     const maxBlockZ =
         Math.floor(
@@ -716,65 +2065,50 @@ function playerCollides(
                 }
 
 
-                const blockMinX =
-                    x - 0.5;
-
-                const blockMaxX =
-                    x + 0.5;
-
-
-                const blockMinY =
-                    y - 0.5;
-
-                const blockMaxY =
-                    y + 0.5;
-
-
-                const blockMinZ =
-                    z - 0.5;
-
-                const blockMaxZ =
-                    z + 0.5;
-
-
-                const overlapX =
+                const overlapsX =
 
                     playerMaxX >
-                    blockMinX
+                    x - 0.5
 
                     &&
 
                     playerMinX <
-                    blockMaxX;
+                    x + 0.5;
 
 
-                const overlapY =
+                const overlapsY =
 
                     playerMaxY >
-                    blockMinY
+                    y - 0.5
 
                     &&
 
                     playerMinY <
-                    blockMaxY;
+                    y + 0.5;
 
 
-                const overlapZ =
+                const overlapsZ =
 
                     playerMaxZ >
-                    blockMinZ
+                    z - 0.5
 
                     &&
 
                     playerMinZ <
-                    blockMaxZ;
+                    z + 0.5;
 
 
                 if (
 
-                    overlapX &&
-                    overlapY &&
-                    overlapZ
+                    overlapsX
+
+                    &&
+
+                    overlapsY
+
+                    &&
+
+                    overlapsZ
 
                 ) {
 
@@ -788,20 +2122,18 @@ function playerCollides(
 
     }
 
-
     return false;
 
 }
 
-
 // ======================================================
-// CHECK IF NEW BLOCK WOULD HIT PLAYER
+// PLACING PLAYER COLLISION
 // ======================================================
 
 function blockWouldHitPlayer(
-    blockX,
-    blockY,
-    blockZ
+    x,
+    y,
+    z
 ) {
 
     const feetY =
@@ -817,14 +2149,14 @@ function blockWouldHitPlayer(
         camera.position.x +
         playerRadius;
 
-
     const playerMinY =
-        feetY;
+        feetY +
+        0.06;
 
     const playerMaxY =
         feetY +
-        playerHeight;
-
+        playerHeight -
+        0.05;
 
     const playerMinZ =
         camera.position.z -
@@ -835,1692 +2167,42 @@ function blockWouldHitPlayer(
         playerRadius;
 
 
-    const blockMinX =
-        blockX - 0.5;
-
-    const blockMaxX =
-        blockX + 0.5;
-
-
-    const blockMinY =
-        blockY - 0.5;
-
-    const blockMaxY =
-        blockY + 0.5;
-
-
-    const blockMinZ =
-        blockZ - 0.5;
-
-    const blockMaxZ =
-        blockZ + 0.5;
-
-
     return (
 
-        playerMaxX > blockMinX &&
+        playerMaxX >
+        x - 0.5
 
-        playerMinX < blockMaxX &&
+        &&
 
-        playerMaxY > blockMinY &&
+        playerMinX <
+        x + 0.5
 
-        playerMinY < blockMaxY &&
+        &&
 
-        playerMaxZ > blockMinZ &&
+        playerMaxY >
+        y - 0.5
 
-        playerMinZ < blockMaxZ
+        &&
+
+        playerMinY <
+        y + 0.5
+
+        &&
+
+        playerMaxZ >
+        z - 0.5
+
+        &&
+
+        playerMinZ <
+        z + 0.5
 
     );
 
 }
 
-
 // ======================================================
-// START GAME
-// ======================================================
-
-function startGame() {
-
-    // ==================================================
-    // SCENE
-    // ==================================================
-
-    scene =
-        new THREE.Scene();
-
-
-    scene.background =
-        new THREE.Color(
-            0x79c9f2
-        );
-
-
-    scene.fog =
-        new THREE.Fog(
-            0x79c9f2,
-            55,
-            120
-        );
-
-
-    // ==================================================
-    // CAMERA
-    // ==================================================
-
-    camera =
-        new THREE.PerspectiveCamera(
-
-            75,
-
-            window.innerWidth /
-            window.innerHeight,
-
-            0.1,
-
-            500
-
-        );
-
-
-    camera.rotation.order =
-        "YXZ";
-
-
-    // ==================================================
-    // RENDERER
-    // ==================================================
-
-    renderer =
-        new THREE.WebGLRenderer({
-
-            antialias: false
-
-        });
-
-
-    renderer.setSize(
-
-        window.innerWidth,
-        window.innerHeight
-
-    );
-
-
-    renderer.setPixelRatio(
-
-        Math.min(
-
-            window.devicePixelRatio,
-
-            2
-
-        )
-
-    );
-
-
-    gameContainer.appendChild(
-        renderer.domElement
-    );
-
-
-    // ==================================================
-    // POINTER LOCK
-    // ==================================================
-
-    renderer.domElement.addEventListener(
-        "click",
-        () => {
-
-            if (
-                document.pointerLockElement !==
-                renderer.domElement
-            ) {
-
-                renderer.domElement
-                    .requestPointerLock();
-
-            }
-
-        }
-    );
-
-
-    // ==================================================
-    // DISABLE RIGHT CLICK MENU
-    // ==================================================
-
-    renderer.domElement.addEventListener(
-        "contextmenu",
-        (event) => {
-
-            event.preventDefault();
-
-        }
-    );
-
-
-    // ==================================================
-    // MOUSE LOOK
-    // ==================================================
-
-    document.addEventListener(
-        "mousemove",
-        (event) => {
-
-            if (
-                document.pointerLockElement !==
-                renderer.domElement
-            ) {
-
-                return;
-
-            }
-
-
-            const sensitivity =
-                0.002;
-
-
-            yaw -=
-
-                event.movementX *
-
-                sensitivity;
-
-
-            pitch -=
-
-                event.movementY *
-
-                sensitivity;
-
-
-            const maximumPitch =
-
-                Math.PI / 2 -
-
-                0.01;
-
-
-            pitch =
-
-                Math.max(
-
-                    -maximumPitch,
-
-                    Math.min(
-
-                        maximumPitch,
-
-                        pitch
-
-                    )
-
-                );
-
-
-            camera.rotation.y =
-                yaw;
-
-
-            camera.rotation.x =
-                pitch;
-
-        }
-    );
-
-
-    // ==================================================
-    // BLOCK BREAK / PLACE
-    // ==================================================
-
-    renderer.domElement.addEventListener(
-        "mousedown",
-        (event) => {
-
-            if (
-                document.pointerLockElement !==
-                renderer.domElement
-            ) {
-
-                return;
-
-            }
-
-
-            // LEFT CLICK
-
-            if (
-                event.button === 0
-            ) {
-
-                breakTargetBlock();
-
-            }
-
-
-            // RIGHT CLICK
-
-            if (
-                event.button === 2
-            ) {
-
-                placeTargetBlock();
-
-            }
-
-        }
-    );
-
-
-    // ==================================================
-    // MOUSE WHEEL HOTBAR
-    // ==================================================
-
-    renderer.domElement.addEventListener(
-        "wheel",
-        (event) => {
-
-            if (
-                document.pointerLockElement !==
-                renderer.domElement
-            ) {
-
-                return;
-
-            }
-
-
-            event.preventDefault();
-
-
-            if (
-                event.deltaY > 0
-            ) {
-
-                selectedHotbarIndex++;
-
-            }
-            else {
-
-                selectedHotbarIndex--;
-
-            }
-
-
-            if (
-                selectedHotbarIndex >
-                hotbarTypes.length - 1
-            ) {
-
-                selectedHotbarIndex =
-                    0;
-
-            }
-
-
-            if (
-                selectedHotbarIndex <
-                0
-            ) {
-
-                selectedHotbarIndex =
-                    hotbarTypes.length - 1;
-
-            }
-
-
-            updateHotbar();
-
-        },
-        {
-            passive: false
-        }
-    );
-
-
-    // ==================================================
-    // KEYBOARD
-    // ==================================================
-
-    document.addEventListener(
-        "keydown",
-        (event) => {
-
-            keys[event.code] =
-                true;
-
-
-            // JUMP
-
-            if (
-
-                event.code ===
-                "Space"
-
-                &&
-
-                onGround
-
-            ) {
-
-                verticalVelocity =
-                    jumpPower;
-
-
-                onGround =
-                    false;
-
-            }
-
-
-            if (
-                event.code ===
-                "Space"
-            ) {
-
-                event.preventDefault();
-
-            }
-
-
-            // HOTBAR
-
-            if (
-                event.code.startsWith(
-                    "Digit"
-                )
-            ) {
-
-                const number =
-                    Number(
-                        event.code.substring(
-                            5
-                        )
-                    );
-
-
-                if (
-                    number >= 1 &&
-                    number <= 5
-                ) {
-
-                    selectedHotbarIndex =
-                        number - 1;
-
-
-                    updateHotbar();
-
-                }
-
-            }
-
-        }
-    );
-
-
-    document.addEventListener(
-        "keyup",
-        (event) => {
-
-            keys[event.code] =
-                false;
-
-        }
-    );
-
-
-    // ==================================================
-    // LIGHTING
-    // ==================================================
-
-    const sunlight =
-        new THREE.DirectionalLight(
-
-            0xffffff,
-
-            2.3
-
-        );
-
-
-    sunlight.position.set(
-
-        40,
-
-        70,
-
-        25
-
-    );
-
-
-    scene.add(
-        sunlight
-    );
-
-
-    const ambientLight =
-        new THREE.AmbientLight(
-
-            0xffffff,
-
-            1.1
-
-        );
-
-
-    scene.add(
-        ambientLight
-    );
-
-
-    // ==================================================
-    // BLOCK MATERIALS
-    // ==================================================
-
-    const grassTop =
-        new THREE.MeshLambertMaterial({
-
-            color: 0x61b84a
-
-        });
-
-
-    const grassSide =
-        new THREE.MeshLambertMaterial({
-
-            color: 0x56883c
-
-        });
-
-
-    const dirtMaterial =
-        new THREE.MeshLambertMaterial({
-
-            color: 0x795235
-
-        });
-
-
-    const woodMaterial =
-        new THREE.MeshLambertMaterial({
-
-            color: 0x765030
-
-        });
-
-
-    const leavesMaterial =
-        new THREE.MeshLambertMaterial({
-
-            color: 0x357a32
-
-        });
-
-
-    const stoneMaterial =
-        new THREE.MeshLambertMaterial({
-
-            color: 0x777777
-
-        });
-
-
-    const grassMaterials = [
-
-        grassSide,
-
-        grassSide,
-
-        grassTop,
-
-        dirtMaterial,
-
-        grassSide,
-
-        grassSide
-
-    ];
-
-
-    materials = {
-
-        grass:
-            grassMaterials,
-
-        dirt:
-            dirtMaterial,
-
-        wood:
-            woodMaterial,
-
-        leaves:
-            leavesMaterial,
-
-        stone:
-            stoneMaterial
-
-    };
-
-
-    // ==================================================
-    // GEOMETRY
-    // ==================================================
-
-    blockGeometry =
-        new THREE.BoxGeometry(
-            1,
-            1,
-            1
-        );
-
-
-    // ==================================================
-    // GENERATE WORLD
-    // ==================================================
-
-    generateWorld();
-
-
-    // ==================================================
-    // SPAWN PLAYER
-    // ==================================================
-
-    const spawnX = 0;
-    const spawnZ = 8;
-
-
-    const spawnHeight =
-        getTerrainHeight(
-            spawnX,
-            spawnZ
-        );
-
-
-    camera.position.set(
-
-        spawnX,
-
-        spawnHeight +
-        0.5 +
-        eyeHeight,
-
-        spawnZ
-
-    );
-
-
-    // ==================================================
-    // HOTBAR
-    // ==================================================
-
-    updateHotbar();
-
-
-    // ==================================================
-    // CLOCK
-    // ==================================================
-
-    clock =
-        new THREE.Clock();
-
-
-    animate();
-
-}
-
-
-// ======================================================
-// GENERATE WORLD
-// ======================================================
-
-function generateWorld() {
-
-    worldBlocks.clear();
-
-
-    for (
-        const type of
-        hotbarTypes
-    ) {
-
-        blocksByType[
-            type
-        ].clear();
-
-    }
-
-
-    // ==================================================
-    // TERRAIN
-    // ==================================================
-
-    for (
-        let x = -worldSize;
-        x <= worldSize;
-        x++
-    ) {
-
-        for (
-            let z = -worldSize;
-            z <= worldSize;
-            z++
-        ) {
-
-            const height =
-                getTerrainHeight(
-                    x,
-                    z
-                );
-
-
-            // GRASS
-
-            addBlock(
-
-                x,
-
-                height,
-
-                z,
-
-                "grass"
-
-            );
-
-
-            // DIRT LAYER 1
-
-            addBlock(
-
-                x,
-
-                height - 1,
-
-                z,
-
-                "dirt"
-
-            );
-
-
-            // DIRT LAYER 2
-
-            addBlock(
-
-                x,
-
-                height - 2,
-
-                z,
-
-                "dirt"
-
-            );
-
-
-            // STONE
-
-            addBlock(
-
-                x,
-
-                height - 3,
-
-                z,
-
-                "stone"
-
-            );
-
-        }
-
-    }
-
-
-    // ==================================================
-    // TREES
-    // ==================================================
-
-    for (
-        let x = -worldSize;
-        x <= worldSize;
-        x++
-    ) {
-
-        for (
-            let z = -worldSize;
-            z <= worldSize;
-            z++
-        ) {
-
-            const treeChance =
-                coordinateRandom(
-                    x,
-                    z
-                );
-
-
-            if (
-
-                treeChance <
-                0.027
-
-                &&
-
-                canTreeSpawn(
-                    x,
-                    z
-                )
-
-            ) {
-
-                createTree(
-
-                    x,
-
-                    getTerrainHeight(
-                        x,
-                        z
-                    ),
-
-                    z
-
-                );
-
-            }
-
-        }
-
-    }
-
-
-    // ==================================================
-    // RENDER ALL TYPES
-    // ==================================================
-
-    rebuildAllBlocks();
-
-}
-
-
-// ======================================================
-// CREATE TREE
-// ======================================================
-
-function createTree(
-    x,
-    groundHeight,
-    z
-) {
-
-    const random =
-        coordinateRandom(
-
-            x + 500,
-
-            z + 500
-
-        );
-
-
-    const trunkHeight =
-
-        random > 0.5
-
-            ? 5
-
-            : 4;
-
-
-    // ==================================================
-    // TRUNK
-    // ==================================================
-
-    for (
-        let y = 1;
-        y <= trunkHeight;
-        y++
-    ) {
-
-        addBlock(
-
-            x,
-
-            groundHeight +
-            y,
-
-            z,
-
-            "wood"
-
-        );
-
-    }
-
-
-    const leafBase =
-
-        groundHeight +
-
-        trunkHeight;
-
-
-    // ==================================================
-    // LOWER LEAVES
-    // ==================================================
-
-    for (
-        let leafX = -2;
-        leafX <= 2;
-        leafX++
-    ) {
-
-        for (
-            let leafZ = -2;
-            leafZ <= 2;
-            leafZ++
-        ) {
-
-            if (
-
-                Math.abs(
-                    leafX
-                ) === 2
-
-                &&
-
-                Math.abs(
-                    leafZ
-                ) === 2
-
-            ) {
-
-                continue;
-
-            }
-
-
-            if (
-
-                leafX === 0
-
-                &&
-
-                leafZ === 0
-
-            ) {
-
-                continue;
-
-            }
-
-
-            addBlock(
-
-                x + leafX,
-
-                leafBase,
-
-                z + leafZ,
-
-                "leaves"
-
-            );
-
-        }
-
-    }
-
-
-    // ==================================================
-    // MIDDLE LEAVES
-    // ==================================================
-
-    for (
-        let leafX = -2;
-        leafX <= 2;
-        leafX++
-    ) {
-
-        for (
-            let leafZ = -2;
-            leafZ <= 2;
-            leafZ++
-        ) {
-
-            if (
-
-                Math.abs(
-                    leafX
-                ) === 2
-
-                &&
-
-                Math.abs(
-                    leafZ
-                ) === 2
-
-            ) {
-
-                continue;
-
-            }
-
-
-            addBlock(
-
-                x + leafX,
-
-                leafBase +
-                1,
-
-                z + leafZ,
-
-                "leaves"
-
-            );
-
-        }
-
-    }
-
-
-    // ==================================================
-    // UPPER LEAVES
-    // ==================================================
-
-    for (
-        let leafX = -1;
-        leafX <= 1;
-        leafX++
-    ) {
-
-        for (
-            let leafZ = -1;
-            leafZ <= 1;
-            leafZ++
-        ) {
-
-            addBlock(
-
-                x + leafX,
-
-                leafBase +
-                2,
-
-                z + leafZ,
-
-                "leaves"
-
-            );
-
-        }
-
-    }
-
-
-    addBlock(
-
-        x,
-
-        leafBase +
-        3,
-
-        z,
-
-        "leaves"
-
-    );
-
-}
-
-
-// ======================================================
-// BLOCK COLOR VARIATION
-// ======================================================
-
-function getBlockTint(
-    block
-) {
-
-    const random1 =
-        coordinateRandom(
-
-            block.x * 7 +
-            block.y * 3,
-
-            block.z * 11
-
-        );
-
-
-    const random2 =
-        coordinateRandom(
-
-            block.x * 17,
-
-            block.z * 5 +
-            block.y * 9
-
-        );
-
-
-    const color =
-        new THREE.Color();
-
-
-    if (
-        block.type ===
-        "grass"
-    ) {
-
-        color.setRGB(
-
-            0.88 +
-            random1 * 0.10,
-
-            0.91 +
-            random2 * 0.09,
-
-            0.87 +
-            random1 * 0.09
-
-        );
-
-    }
-
-    else if (
-        block.type ===
-        "leaves"
-    ) {
-
-        color.setRGB(
-
-            0.82 +
-            random1 * 0.13,
-
-            0.88 +
-            random2 * 0.12,
-
-            0.82 +
-            random1 * 0.12
-
-        );
-
-    }
-
-    else if (
-        block.type ===
-        "wood"
-    ) {
-
-        const shade =
-            0.86 +
-            random1 *
-            0.14;
-
-
-        color.setRGB(
-
-            shade,
-
-            shade *
-            0.96,
-
-            shade *
-            0.90
-
-        );
-
-    }
-
-    else {
-
-        const shade =
-            0.87 +
-            random1 *
-            0.13;
-
-
-        color.setRGB(
-
-            shade,
-
-            shade,
-
-            shade
-
-        );
-
-    }
-
-
-    return color;
-
-}
-
-
-// ======================================================
-// REBUILD ALL BLOCK TYPES
-// ======================================================
-
-function rebuildAllBlocks() {
-
-    rebuildType(
-        "grass"
-    );
-
-    rebuildType(
-        "dirt"
-    );
-
-    rebuildType(
-        "wood"
-    );
-
-    rebuildType(
-        "leaves"
-    );
-
-    rebuildType(
-        "stone"
-    );
-
-}
-
-
-// ======================================================
-// REBUILD ONE BLOCK TYPE
-// ======================================================
-
-function rebuildType(
-    type
-) {
-
-    const oldMesh =
-        renderMeshes[
-            type
-        ];
-
-
-    if (oldMesh) {
-
-        scene.remove(
-            oldMesh
-        );
-
-
-        if (
-            typeof oldMesh.dispose ===
-            "function"
-        ) {
-
-            oldMesh.dispose();
-
-        }
-
-    }
-
-
-    const blocks =
-        Array.from(
-
-            blocksByType[
-                type
-            ].values()
-
-        );
-
-
-    if (
-        blocks.length === 0
-    ) {
-
-        renderMeshes[
-            type
-        ] = null;
-
-
-        return;
-
-    }
-
-
-    const mesh =
-        new THREE.InstancedMesh(
-
-            blockGeometry,
-
-            materials[
-                type
-            ],
-
-            blocks.length
-
-        );
-
-
-    const dummy =
-        new THREE.Object3D();
-
-
-    for (
-        let i = 0;
-        i < blocks.length;
-        i++
-    ) {
-
-        const block =
-            blocks[i];
-
-
-        dummy.position.set(
-
-            block.x,
-
-            block.y,
-
-            block.z
-
-        );
-
-
-        dummy.updateMatrix();
-
-
-        mesh.setMatrixAt(
-
-            i,
-
-            dummy.matrix
-
-        );
-
-
-        const tint =
-            getBlockTint(
-                block
-            );
-
-
-        mesh.setColorAt(
-
-            i,
-
-            tint
-
-        );
-
-    }
-
-
-    mesh.instanceMatrix.needsUpdate =
-        true;
-
-
-    if (
-        mesh.instanceColor
-    ) {
-
-        mesh.instanceColor.needsUpdate =
-            true;
-
-    }
-
-
-    mesh.userData.blocks =
-        blocks;
-
-
-    mesh.userData.blockType =
-        type;
-
-
-    mesh.computeBoundingSphere();
-
-
-    scene.add(
-        mesh
-    );
-
-
-    renderMeshes[
-        type
-    ] = mesh;
-
-}
-
-
-// ======================================================
-// FIND BLOCK PLAYER IS LOOKING AT
-// ======================================================
-
-function getTargetBlock() {
-
-    raycaster.setFromCamera(
-
-        screenCenter,
-
-        camera
-
-    );
-
-
-    const meshes =
-
-        Object.values(
-            renderMeshes
-        )
-
-        .filter(
-            mesh => mesh !== null
-        );
-
-
-    const hits =
-
-        raycaster.intersectObjects(
-
-            meshes,
-
-            false
-
-        );
-
-
-    if (
-        hits.length === 0
-    ) {
-
-        return null;
-
-    }
-
-
-    for (
-        const hit of hits
-    ) {
-
-        if (
-            hit.instanceId ===
-            undefined
-        ) {
-
-            continue;
-
-        }
-
-
-        const block =
-
-            hit.object
-                .userData
-                .blocks[
-                    hit.instanceId
-                ];
-
-
-        if (!block) {
-
-            continue;
-
-        }
-
-
-        return {
-
-            block: block,
-
-            hit: hit
-
-        };
-
-    }
-
-
-    return null;
-
-}
-
-
-// ======================================================
-// BREAK BLOCK
-// ======================================================
-
-function breakTargetBlock() {
-
-    const target =
-        getTargetBlock();
-
-
-    if (!target) {
-
-        return;
-
-    }
-
-
-    const block =
-        target.block;
-
-
-    const removed =
-        removeBlock(
-
-            block.x,
-
-            block.y,
-
-            block.z
-
-        );
-
-
-    if (!removed) {
-
-        return;
-
-    }
-
-
-    rebuildType(
-        removed.type
-    );
-
-}
-
-
-// ======================================================
-// PLACE BLOCK
-// ======================================================
-
-function placeTargetBlock() {
-
-    const target =
-        getTargetBlock();
-
-
-    if (!target) {
-
-        return;
-
-    }
-
-
-    if (
-        !target.hit.face
-    ) {
-
-        return;
-
-    }
-
-
-    const block =
-        target.block;
-
-
-    const normal =
-        target.hit.face.normal;
-
-
-    const normalX =
-        Math.round(
-            normal.x
-        );
-
-
-    const normalY =
-        Math.round(
-            normal.y
-        );
-
-
-    const normalZ =
-        Math.round(
-            normal.z
-        );
-
-
-    const placeX =
-
-        block.x +
-        normalX;
-
-
-    const placeY =
-
-        block.y +
-        normalY;
-
-
-    const placeZ =
-
-        block.z +
-        normalZ;
-
-
-    // ==================================================
-    // WORLD LIMIT
-    // ==================================================
-
-    if (
-
-        Math.abs(
-            placeX
-        ) > worldSize
-
-        ||
-
-        Math.abs(
-            placeZ
-        ) > worldSize
-
-    ) {
-
-        return;
-
-    }
-
-
-    if (
-
-        placeY <
-        -10
-
-        ||
-
-        placeY >
-        40
-
-    ) {
-
-        return;
-
-    }
-
-
-    // ==================================================
-    // BLOCK ALREADY THERE
-    // ==================================================
-
-    if (
-        blockExists(
-
-            placeX,
-
-            placeY,
-
-            placeZ
-
-        )
-    ) {
-
-        return;
-
-    }
-
-
-    // ==================================================
-    // DON'T PLACE INSIDE PLAYER
-    // ==================================================
-
-    if (
-        blockWouldHitPlayer(
-
-            placeX,
-
-            placeY,
-
-            placeZ
-
-        )
-    ) {
-
-        return;
-
-    }
-
-
-    const selectedType =
-
-        hotbarTypes[
-            selectedHotbarIndex
-        ];
-
-
-    const added =
-        addBlock(
-
-            placeX,
-
-            placeY,
-
-            placeZ,
-
-            selectedType
-
-        );
-
-
-    if (
-        added
-    ) {
-
-        rebuildType(
-            selectedType
-        );
-
-    }
-
-}
-
-
-// ======================================================
-// MOVE PLAYER ON ONE AXIS
+// HORIZONTAL MOVEMENT
 // ======================================================
 
 function moveHorizontalAxis(
@@ -2540,7 +2222,6 @@ function moveHorizontalAxis(
     const maxStep =
         0.08;
 
-
     const steps =
         Math.ceil(
 
@@ -2551,7 +2232,6 @@ function moveHorizontalAxis(
             maxStep
 
         );
-
 
     const step =
         amount /
@@ -2580,7 +2260,6 @@ function moveHorizontalAxis(
 
         }
 
-
         if (
             axis === "z"
         ) {
@@ -2591,8 +2270,10 @@ function moveHorizontalAxis(
         }
 
 
+        // NORMAL MOVEMENT
+
         if (
-            playerCollides(
+            !playerCollides(
 
                 testX,
 
@@ -2603,22 +2284,63 @@ function moveHorizontalAxis(
             )
         ) {
 
-            break;
+            camera.position.x =
+                testX;
+
+            camera.position.z =
+                testZ;
+
+            continue;
 
         }
 
 
-        camera.position.x =
-            testX;
+        // TRY STEPPING UP 1 BLOCK
+
+        const raisedY =
+            camera.position.y +
+            1.01;
 
 
-        camera.position.z =
-            testZ;
+        if (
+            !playerCollides(
+
+                testX,
+
+                raisedY,
+
+                testZ
+
+            )
+        ) {
+
+            camera.position.y =
+                raisedY;
+
+            camera.position.x =
+                testX;
+
+            camera.position.z =
+                testZ;
+
+            verticalVelocity =
+                0;
+
+            onGround =
+                true;
+
+            continue;
+
+        }
+
+
+        // REAL WALL
+
+        break;
 
     }
 
 }
-
 
 // ======================================================
 // VERTICAL MOVEMENT
@@ -2640,7 +2362,6 @@ function moveVertical(
     const maxStep =
         0.04;
 
-
     const steps =
         Math.ceil(
 
@@ -2651,7 +2372,6 @@ function moveVertical(
             maxStep
 
         );
-
 
     const step =
         amount /
@@ -2665,9 +2385,7 @@ function moveVertical(
     ) {
 
         const testY =
-
             camera.position.y +
-
             step;
 
 
@@ -2692,10 +2410,8 @@ function moveVertical(
 
             }
 
-
             verticalVelocity =
                 0;
-
 
             return;
 
@@ -2709,9 +2425,291 @@ function moveVertical(
 
 }
 
+// ======================================================
+// TARGET BLOCK
+// ======================================================
+
+function getTargetBlock() {
+
+    raycaster.setFromCamera(
+
+        screenCenter,
+
+        camera
+
+    );
+
+
+    const meshes =
+        Object.values(
+            renderMeshes
+        ).filter(
+
+            mesh =>
+                mesh !== null
+
+        );
+
+
+    const hits =
+        raycaster.intersectObjects(
+
+            meshes,
+
+            false
+
+        );
+
+
+    for (
+        const hit of
+        hits
+    ) {
+
+        if (
+            hit.instanceId ===
+            undefined
+        ) {
+
+            continue;
+
+        }
+
+
+        const block =
+            hit.object
+                .userData
+                .blocks[
+                    hit.instanceId
+                ];
+
+
+        if (
+            !block
+        ) {
+
+            continue;
+
+        }
+
+
+        return {
+
+            block,
+
+            hit
+
+        };
+
+    }
+
+
+    return null;
+
+}
 
 // ======================================================
-// PLAYER MOVEMENT
+// BREAK BLOCK
+// ======================================================
+
+function breakTargetBlock() {
+
+    const target =
+        getTargetBlock();
+
+
+    if (
+        !target
+    ) {
+
+        return;
+
+    }
+
+
+    // BEDROCK IS UNBREAKABLE
+
+    if (
+        target.block.type ===
+        "bedrock"
+    ) {
+
+        return;
+
+    }
+
+
+    const removed =
+        removeBlock(
+
+            target.block.x,
+
+            target.block.y,
+
+            target.block.z
+
+        );
+
+
+    if (
+        removed
+    ) {
+
+        rebuildType(
+            removed.type
+        );
+
+    }
+
+}
+
+// ======================================================
+// PLACE BLOCK
+// ======================================================
+
+function placeTargetBlock() {
+
+    const target =
+        getTargetBlock();
+
+
+    if (
+        !target ||
+        !target.hit.face
+    ) {
+
+        return;
+
+    }
+
+
+    const normal =
+        target.hit.face.normal;
+
+
+    const placeX =
+
+        target.block.x +
+
+        Math.round(
+            normal.x
+        );
+
+
+    const placeY =
+
+        target.block.y +
+
+        Math.round(
+            normal.y
+        );
+
+
+    const placeZ =
+
+        target.block.z +
+
+        Math.round(
+            normal.z
+        );
+
+
+    if (
+
+        Math.abs(
+            placeX
+        ) > worldSize
+
+        ||
+
+        Math.abs(
+            placeZ
+        ) > worldSize
+
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        placeY <
+        bedrockY
+        ||
+        placeY >
+        40
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        blockExists(
+
+            placeX,
+
+            placeY,
+
+            placeZ
+
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        blockWouldHitPlayer(
+
+            placeX,
+
+            placeY,
+
+            placeZ
+
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    const type =
+        hotbarTypes[
+            selectedHotbarIndex
+        ];
+
+
+    if (
+        addBlock(
+
+            placeX,
+
+            placeY,
+
+            placeZ,
+
+            type
+
+        )
+    ) {
+
+        rebuildType(
+            type
+        );
+
+    }
+
+}
+
+// ======================================================
+// MOVEMENT
 // ======================================================
 
 function updateMovement(
@@ -2754,8 +2752,6 @@ function updateMovement(
         new THREE.Vector3();
 
 
-    // W
-
     if (
         keys["KeyW"]
     ) {
@@ -2766,8 +2762,6 @@ function updateMovement(
 
     }
 
-
-    // S
 
     if (
         keys["KeyS"]
@@ -2780,8 +2774,6 @@ function updateMovement(
     }
 
 
-    // D
-
     if (
         keys["KeyD"]
     ) {
@@ -2792,8 +2784,6 @@ function updateMovement(
 
     }
 
-
-    // A
 
     if (
         keys["KeyA"]
@@ -2811,16 +2801,14 @@ function updateMovement(
         0
     ) {
 
-        movement.normalize();
+        movement
+            .normalize()
+            .multiplyScalar(
 
+                moveSpeed *
+                delta
 
-        movement.multiplyScalar(
-
-            moveSpeed *
-
-            delta
-
-        );
+            );
 
 
         moveHorizontalAxis(
@@ -2843,19 +2831,14 @@ function updateMovement(
     }
 
 
-    // ==================================================
-    // MAP BOUNDARY
-    // ==================================================
+    // MAP LIMIT
 
     const mapEdge =
-
         worldSize -
-
         0.5;
 
 
     camera.position.x =
-
         Math.max(
 
             -mapEdge,
@@ -2872,7 +2855,6 @@ function updateMovement(
 
 
     camera.position.z =
-
         Math.max(
 
             -mapEdge,
@@ -2888,9 +2870,7 @@ function updateMovement(
         );
 
 
-    // ==================================================
     // GRAVITY
-    // ==================================================
 
     onGround =
         false;
@@ -2899,23 +2879,75 @@ function updateMovement(
     verticalVelocity -=
 
         gravity *
-
-        delta;
-
-
-    const verticalMovement =
-
-        verticalVelocity *
-
         delta;
 
 
     moveVertical(
-        verticalMovement
+
+        verticalVelocity *
+        delta
+
     );
+
+
+    // ==================================================
+    // EMERGENCY VOID RESCUE
+    // ==================================================
+
+    if (
+        camera.position.y <
+        -12
+    ) {
+
+        respawnPlayer();
+
+    }
 
 }
 
+// ======================================================
+// RESPAWN
+// ======================================================
+
+function respawnPlayer() {
+
+    const spawnX =
+        0;
+
+    const spawnZ =
+        8;
+
+
+    const spawnHeight =
+        getTerrainHeight(
+
+            spawnX,
+
+            spawnZ
+
+        );
+
+
+    camera.position.set(
+
+        spawnX,
+
+        spawnHeight +
+        0.5 +
+        eyeHeight,
+
+        spawnZ
+
+    );
+
+
+    verticalVelocity =
+        0;
+
+    onGround =
+        false;
+
+}
 
 // ======================================================
 // GAME LOOP
@@ -2953,21 +2985,19 @@ function animate() {
 
 }
 
-
 // ======================================================
 // WINDOW RESIZE
 // ======================================================
 
 window.addEventListener(
+
     "resize",
+
     () => {
 
         if (
-
             !camera ||
-
             !renderer
-
         ) {
 
             return;
@@ -2994,4 +3024,5 @@ window.addEventListener(
         );
 
     }
+
 );
