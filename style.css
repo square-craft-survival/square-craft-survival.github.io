@@ -1,0 +1,162 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #87ceeb;
+}
+
+/* START SCREEN */
+
+#startScreen {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+
+    background:
+        linear-gradient(
+            to bottom,
+            #75cfff 0%,
+            #75cfff 55%,
+            #65a83f 55%,
+            #65a83f 100%
+        );
+
+    text-align: center;
+    z-index: 100;
+}
+
+#startScreen h1 {
+    margin: 0;
+
+    font-size: 72px;
+    font-weight: 900;
+
+    color: white;
+
+    text-shadow:
+        4px 4px 0 #222,
+        7px 7px 0 #555;
+
+    letter-spacing: 3px;
+}
+
+#startScreen p {
+    margin-top: 15px;
+
+    font-size: 20px;
+    font-weight: bold;
+
+    color: white;
+
+    text-shadow: 2px 2px 0 #222;
+}
+
+#playButton {
+    margin-top: 30px;
+
+    width: 220px;
+    height: 65px;
+
+    font-size: 28px;
+    font-weight: bold;
+
+    color: white;
+
+    background: #777;
+
+    border: 4px solid #222;
+
+    box-shadow:
+        inset 3px 3px 0 #aaa,
+        inset -3px -3px 0 #444;
+
+    cursor: pointer;
+}
+
+#playButton:hover {
+    background: #888;
+}
+
+#playButton:active {
+    transform: translateY(3px);
+
+    box-shadow:
+        inset 3px 3px 0 #444,
+        inset -3px -3px 0 #aaa;
+}
+
+
+/* GAME SCREEN */
+
+#game {
+    width: 100vw;
+    height: 100vh;
+}
+
+
+/* CROSSHAIR */
+
+#crosshair {
+    position: fixed;
+
+    top: 50%;
+    left: 50%;
+
+    transform: translate(-50%, -50%);
+
+    color: white;
+
+    font-size: 32px;
+    font-weight: bold;
+
+    text-shadow: 1px 1px 2px black;
+
+    pointer-events: none;
+
+    z-index: 10;
+}
+
+
+/* HOTBAR */
+
+#hotbar {
+    position: fixed;
+
+    bottom: 20px;
+    left: 50%;
+
+    transform: translateX(-50%);
+
+    display: flex;
+
+    gap: 4px;
+
+    z-index: 10;
+}
+
+.slot {
+    width: 60px;
+    height: 60px;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    background: rgba(50, 50, 50, 0.8);
+
+    border: 3px solid #777;
+
+    color: white;
+
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.slot.selected {
+    border: 4px solid white;
+}
