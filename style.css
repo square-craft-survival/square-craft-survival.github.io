@@ -1,8 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Bungee&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Jersey+10&display=swap');
+
 body {
     margin: 0;
     overflow: hidden;
-    font-family: 'Bungee', sans-serif;
+    font-family: 'Jersey 10', sans-serif;
     background: #87ceeb;
 }
 
