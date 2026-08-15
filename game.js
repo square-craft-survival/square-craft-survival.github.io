@@ -7,14 +7,35 @@ const gameContainer = document.getElementById("game");
 let scene;
 let camera;
 let renderer;
+let clock;
+
+const keys = {};
+
+let yaw = 0;
+let pitch = 0;
+
+const moveSpeed = 6;
+
+
+// =============================
+// PLAY BUTTON
+// =============================
 
 playButton.addEventListener("click", () => {
+
     startScreen.style.display = "none";
 
     startGame();
+
 });
 
+
+// =============================
+// START GAME
+// =============================
+
 function startGame() {
+
     // -------------------------
     // SCENE
     // -------------------------
@@ -35,9 +56,9 @@ function startGame() {
         1000
     );
 
-    camera.position.set(0, 4, 8);
+    camera.position.set(0, 2.2, 8);
 
-    camera.lookAt(0, 1, 0);
+    camera.rotation.order = "YXZ";
 
 
     // -------------------------
@@ -58,6 +79,56 @@ function startGame() {
     );
 
     gameContainer.appendChild(renderer.domElement);
+
+
+    // -------------------------
+    // POINTER LOCK
+    // -------------------------
+
+    renderer.domElement.addEventListener("click", () => {
+
+        renderer.domElement.requestPointerLock();
+
+    });
+
+    document.addEventListener("mousemove", (event) => {
+
+        if (document.pointerLockElement !== renderer.domElement)
+            return;
+
+        const sensitivity = 0.002;
+
+        yaw -= event.movementX * sensitivity;
+        pitch -= event.movementY * sensitivity;
+
+        const maxPitch = Math.PI / 2 - 0.01;
+
+        pitch = Math.max(
+            -maxPitch,
+            Math.min(maxPitch, pitch)
+        );
+
+        camera.rotation.y = yaw;
+        camera.rotation.x = pitch;
+
+    });
+
+
+    // -------------------------
+    // KEYBOARD
+    // -------------------------
+
+    document.addEventListener("keydown", (event) => {
+
+        keys[event.code] = true;
+
+    });
+
+    document.addEventListener("keyup", (event) => {
+
+        keys[event.code] = false;
+
+    });
 
 
     // -------------------------
@@ -103,21 +174,23 @@ function startGame() {
     });
 
 
-    // Materials correspond to:
-    // right, left, top, bottom, front, back
-
     const grassMaterials = [
+
         grassSide,
         grassSide,
+
         grassTop,
+
         dirt,
+
         grassSide,
         grassSide
+
     ];
 
 
     // -------------------------
-    // CREATE GROUND
+    // BLOCK GEOMETRY
     // -------------------------
 
     const blockGeometry = new THREE.BoxGeometry(
@@ -125,6 +198,11 @@ function startGame() {
         1,
         1
     );
+
+
+    // -------------------------
+    // GENERATE WORLD
+    // -------------------------
 
     const worldSize = 20;
 
@@ -144,32 +222,129 @@ function startGame() {
             );
 
             scene.add(block);
+
         }
+
     }
 
 
     // -------------------------
-    // GAME LOOP
+    // CLOCK
+    // -------------------------
+
+    clock = new THREE.Clock();
+
+
+    // -------------------------
+    // START LOOP
     // -------------------------
 
     animate();
+
 }
 
+
+// =============================
+// PLAYER MOVEMENT
+// =============================
+
+function updateMovement(delta) {
+
+    const forward = new THREE.Vector3(
+        -Math.sin(yaw),
+        0,
+        -Math.cos(yaw)
+    );
+
+    const right = new THREE.Vector3(
+        Math.cos(yaw),
+        0,
+        -Math.sin(yaw)
+    );
+
+
+    const movement = new THREE.Vector3();
+
+
+    // W
+
+    if (keys["KeyW"]) {
+
+        movement.add(forward);
+
+    }
+
+
+    // S
+
+    if (keys["KeyS"]) {
+
+        movement.sub(forward);
+
+    }
+
+
+    // D
+
+    if (keys["KeyD"]) {
+
+        movement.add(right);
+
+    }
+
+
+    // A
+
+    if (keys["KeyA"]) {
+
+        movement.sub(right);
+
+    }
+
+
+    if (movement.lengthSq() > 0) {
+
+        movement.normalize();
+
+        movement.multiplyScalar(
+            moveSpeed * delta
+        );
+
+        camera.position.add(movement);
+
+    }
+
+
+    // Keep player at standing height
+
+    camera.position.y = 2.2;
+
+}
+
+
+// =============================
+// GAME LOOP
+// =============================
 
 function animate() {
 
     requestAnimationFrame(animate);
 
+    const delta = clock.getDelta();
+
+    updateMovement(delta);
+
     renderer.render(
         scene,
         camera
     );
+
 }
 
 
-// -------------------------
+// =============================
 // WINDOW RESIZE
-// -------------------------
+// =============================
 
 window.addEventListener("resize", () => {
 
@@ -186,4 +361,5 @@ window.addEventListener("resize", () => {
         window.innerWidth,
         window.innerHeight
     );
+
 });
