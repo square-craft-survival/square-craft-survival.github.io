@@ -14,7 +14,34 @@ const keys = {};
 let yaw = 0;
 let pitch = 0;
 
-const moveSpeed = 6;
+// =============================
+// PLAYER SETTINGS
+// =============================
+
+const moveSpeed = 7;
+
+const gravity = 20;
+const jumpPower = 7.5;
+
+let verticalVelocity = 0;
+let onGround = true;
+
+// Top of the grass blocks is Y = 0.5
+const groundHeight = 0.5;
+
+// Player camera height above feet
+const eyeHeight = 1.7;
+
+const standingCameraHeight =
+    groundHeight + eyeHeight;
+
+
+// =============================
+// WORLD SETTINGS
+// =============================
+
+// -60 to +60 = 121 x 121 blocks
+const worldSize = 60;
 
 
 // =============================
@@ -42,7 +69,9 @@ function startGame() {
 
     scene = new THREE.Scene();
 
-    scene.background = new THREE.Color(0x70c5e8);
+    scene.background = new THREE.Color(
+        0x70c5e8
+    );
 
 
     // -------------------------
@@ -56,7 +85,11 @@ function startGame() {
         1000
     );
 
-    camera.position.set(0, 2.2, 8);
+    camera.position.set(
+        0,
+        standingCameraHeight,
+        8
+    );
 
     camera.rotation.order = "YXZ";
 
@@ -75,70 +108,124 @@ function startGame() {
     );
 
     renderer.setPixelRatio(
-        Math.min(window.devicePixelRatio, 2)
+        Math.min(
+            window.devicePixelRatio,
+            2
+        )
     );
 
-    gameContainer.appendChild(renderer.domElement);
+    gameContainer.appendChild(
+        renderer.domElement
+    );
 
 
     // -------------------------
     // POINTER LOCK
     // -------------------------
 
-    renderer.domElement.addEventListener("click", () => {
+    renderer.domElement.addEventListener(
+        "click",
+        () => {
 
-        renderer.domElement.requestPointerLock();
+            renderer.domElement.requestPointerLock();
 
-    });
+        }
+    );
 
-    document.addEventListener("mousemove", (event) => {
 
-        if (document.pointerLockElement !== renderer.domElement)
-            return;
+    document.addEventListener(
+        "mousemove",
+        (event) => {
 
-        const sensitivity = 0.002;
+            if (
+                document.pointerLockElement !==
+                renderer.domElement
+            ) {
+                return;
+            }
 
-        yaw -= event.movementX * sensitivity;
-        pitch -= event.movementY * sensitivity;
+            const sensitivity = 0.002;
 
-        const maxPitch = Math.PI / 2 - 0.01;
+            yaw -=
+                event.movementX *
+                sensitivity;
 
-        pitch = Math.max(
-            -maxPitch,
-            Math.min(maxPitch, pitch)
-        );
+            pitch -=
+                event.movementY *
+                sensitivity;
 
-        camera.rotation.y = yaw;
-        camera.rotation.x = pitch;
+            const maxPitch =
+                Math.PI / 2 - 0.01;
 
-    });
+            pitch = Math.max(
+                -maxPitch,
+                Math.min(
+                    maxPitch,
+                    pitch
+                )
+            );
+
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
+
+        }
+    );
 
 
     // -------------------------
     // KEYBOARD
     // -------------------------
 
-    document.addEventListener("keydown", (event) => {
+    document.addEventListener(
+        "keydown",
+        (event) => {
 
-        keys[event.code] = true;
+            keys[event.code] = true;
 
-    });
 
-    document.addEventListener("keyup", (event) => {
+            // JUMP
+            if (
+                event.code === "Space" &&
+                onGround
+            ) {
 
-        keys[event.code] = false;
+                verticalVelocity =
+                    jumpPower;
 
-    });
+                onGround = false;
+
+            }
+
+
+            if (event.code === "Space") {
+
+                event.preventDefault();
+
+            }
+
+        }
+    );
+
+
+    document.addEventListener(
+        "keyup",
+        (event) => {
+
+            keys[event.code] = false;
+
+        }
+    );
 
 
     // -------------------------
     // LIGHTING
     // -------------------------
 
-    const sunlight = new THREE.DirectionalLight(
-        0xffffff,
-        2
-    );
+    const sunlight =
+        new THREE.DirectionalLight(
+            0xffffff,
+            2
+        );
 
     sunlight.position.set(
         10,
@@ -149,10 +236,11 @@ function startGame() {
     scene.add(sunlight);
 
 
-    const ambientLight = new THREE.AmbientLight(
-        0xffffff,
-        1.2
-    );
+    const ambientLight =
+        new THREE.AmbientLight(
+            0xffffff,
+            1.2
+        );
 
     scene.add(ambientLight);
 
@@ -161,17 +249,20 @@ function startGame() {
     // BLOCK MATERIALS
     // -------------------------
 
-    const grassTop = new THREE.MeshLambertMaterial({
-        color: 0x62b547
-    });
+    const grassTop =
+        new THREE.MeshLambertMaterial({
+            color: 0x62b547
+        });
 
-    const grassSide = new THREE.MeshLambertMaterial({
-        color: 0x7a9e45
-    });
+    const grassSide =
+        new THREE.MeshLambertMaterial({
+            color: 0x557c31
+        });
 
-    const dirt = new THREE.MeshLambertMaterial({
-        color: 0x79553a
-    });
+    const dirt =
+        new THREE.MeshLambertMaterial({
+            color: 0x79553a
+        });
 
 
     const grassMaterials = [
@@ -193,39 +284,82 @@ function startGame() {
     // BLOCK GEOMETRY
     // -------------------------
 
-    const blockGeometry = new THREE.BoxGeometry(
-        1,
-        1,
-        1
-    );
+    const blockGeometry =
+        new THREE.BoxGeometry(
+            1,
+            1,
+            1
+        );
 
 
     // -------------------------
-    // GENERATE WORLD
+    // GENERATE BIG WORLD
     // -------------------------
 
-    const worldSize = 20;
+    const width =
+        worldSize * 2 + 1;
 
-    for (let x = -worldSize; x <= worldSize; x++) {
+    const blockCount =
+        width * width;
 
-        for (let z = -worldSize; z <= worldSize; z++) {
 
-            const block = new THREE.Mesh(
-                blockGeometry,
-                grassMaterials
-            );
+    /*
+        Instead of making 14,641
+        completely separate Mesh objects,
+        InstancedMesh renders copies of
+        the same cube much more efficiently.
+    */
 
-            block.position.set(
+    const ground =
+        new THREE.InstancedMesh(
+            blockGeometry,
+            grassMaterials,
+            blockCount
+        );
+
+
+    const dummy =
+        new THREE.Object3D();
+
+    let blockIndex = 0;
+
+
+    for (
+        let x = -worldSize;
+        x <= worldSize;
+        x++
+    ) {
+
+        for (
+            let z = -worldSize;
+            z <= worldSize;
+            z++
+        ) {
+
+            dummy.position.set(
                 x,
                 0,
                 z
             );
 
-            scene.add(block);
+            dummy.updateMatrix();
+
+            ground.setMatrixAt(
+                blockIndex,
+                dummy.matrix
+            );
+
+            blockIndex++;
 
         }
 
     }
+
+
+    ground.instanceMatrix.needsUpdate =
+        true;
+
+    scene.add(ground);
 
 
     // -------------------------
@@ -236,7 +370,7 @@ function startGame() {
 
 
     // -------------------------
-    // START LOOP
+    // START GAME LOOP
     // -------------------------
 
     animate();
@@ -250,24 +384,31 @@ function startGame() {
 
 function updateMovement(delta) {
 
-    const forward = new THREE.Vector3(
-        -Math.sin(yaw),
-        0,
-        -Math.cos(yaw)
-    );
+    // -------------------------
+    // HORIZONTAL MOVEMENT
+    // -------------------------
 
-    const right = new THREE.Vector3(
-        Math.cos(yaw),
-        0,
-        -Math.sin(yaw)
-    );
+    const forward =
+        new THREE.Vector3(
+            -Math.sin(yaw),
+            0,
+            -Math.cos(yaw)
+        );
 
 
-    const movement = new THREE.Vector3();
+    const right =
+        new THREE.Vector3(
+            Math.cos(yaw),
+            0,
+            -Math.sin(yaw)
+        );
+
+
+    const movement =
+        new THREE.Vector3();
 
 
     // W
-
     if (keys["KeyW"]) {
 
         movement.add(forward);
@@ -276,7 +417,6 @@ function updateMovement(delta) {
 
 
     // S
-
     if (keys["KeyS"]) {
 
         movement.sub(forward);
@@ -285,7 +425,6 @@ function updateMovement(delta) {
 
 
     // D
-
     if (keys["KeyD"]) {
 
         movement.add(right);
@@ -294,7 +433,6 @@ function updateMovement(delta) {
 
 
     // A
-
     if (keys["KeyA"]) {
 
         movement.sub(right);
@@ -310,14 +448,68 @@ function updateMovement(delta) {
             moveSpeed * delta
         );
 
-        camera.position.add(movement);
+        camera.position.add(
+            movement
+        );
 
     }
 
 
-    // Keep player at standing height
+    // -------------------------
+    // KEEP PLAYER ON MAP
+    // -------------------------
 
-    camera.position.y = 2.2;
+    const mapEdge =
+        worldSize - 0.5;
+
+    camera.position.x =
+        Math.max(
+            -mapEdge,
+            Math.min(
+                mapEdge,
+                camera.position.x
+            )
+        );
+
+    camera.position.z =
+        Math.max(
+            -mapEdge,
+            Math.min(
+                mapEdge,
+                camera.position.z
+            )
+        );
+
+
+    // -------------------------
+    // GRAVITY
+    // -------------------------
+
+    verticalVelocity -=
+        gravity * delta;
+
+
+    camera.position.y +=
+        verticalVelocity * delta;
+
+
+    // -------------------------
+    // GROUND COLLISION
+    // -------------------------
+
+    if (
+        camera.position.y <=
+        standingCameraHeight
+    ) {
+
+        camera.position.y =
+            standingCameraHeight;
+
+        verticalVelocity = 0;
+
+        onGround = true;
+
+    }
 
 }
 
@@ -328,11 +520,18 @@ function updateMovement(delta) {
 
 function animate() {
 
-    requestAnimationFrame(animate);
+    requestAnimationFrame(
+        animate
+    );
 
-    const delta = clock.getDelta();
+    const delta =
+        Math.min(
+            clock.getDelta(),
+            0.05
+        );
 
     updateMovement(delta);
+
 
     renderer.render(
         scene,
@@ -346,20 +545,28 @@ function animate() {
 // WINDOW RESIZE
 // =============================
 
-window.addEventListener("resize", () => {
+window.addEventListener(
+    "resize",
+    () => {
 
-    if (!camera || !renderer)
-        return;
+        if (
+            !camera ||
+            !renderer
+        ) {
+            return;
+        }
 
-    camera.aspect =
-        window.innerWidth /
-        window.innerHeight;
+        camera.aspect =
+            window.innerWidth /
+            window.innerHeight;
 
-    camera.updateProjectionMatrix();
+        camera.updateProjectionMatrix();
 
-    renderer.setSize(
-        window.innerWidth,
-        window.innerHeight
-    );
 
-});
+        renderer.setSize(
+            window.innerWidth,
+            window.innerHeight
+        );
+
+    }
+);
