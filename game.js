@@ -228,6 +228,7 @@ let camera;
 let renderer;
 let clock;
 let blockGeometry;
+let waterGeometry;
 
 let sunLight;
 let ambientLight;
@@ -2253,23 +2254,15 @@ function generateChunkBlocks(
                 continue;
             }
 
-            for (
-                let y =
-                    surface +
-                    1;
-
-                y <=
-                waterTop;
-
-                y++
-            ) {
-                put(
-                    x,
-                    y,
-                    z,
-                    "water"
-                );
-            }
+            // One top surface per column. The former stacked transparent water
+            // cubes exposed their insides and made oceans look like a glitchy
+            // grid of water walls.
+            put(
+                x,
+                waterTop,
+                z,
+                "water"
+            );
         }
     }
 
@@ -3032,10 +3025,13 @@ function createMaterials() {
                 true,
 
             opacity:
-                0.62,
+                0.78,
 
             depthWrite:
-                false
+                true,
+
+            side:
+                THREE.DoubleSide
         });
 
     materials.wood = [
@@ -3264,7 +3260,10 @@ function rebuildChunk(
 
         const mesh =
             new THREE.InstancedMesh(
-                blockGeometry,
+                type ===
+                "water"
+                    ? waterGeometry
+                    : blockGeometry,
                 materials[type],
                 blocks.length
             );
@@ -3279,7 +3278,11 @@ function rebuildChunk(
 
             dummy.position.set(
                 b.x,
-                b.y,
+                type ===
+                "water"
+                    ? b.y +
+                    0.5
+                    : b.y,
                 b.z
             );
 
@@ -6997,6 +7000,24 @@ function spawnEntityForChunk(
         return;
     }
 
+    if (
+        requestedType
+        &&
+        camera
+        &&
+        Math.hypot(
+            x -
+            camera.position.x,
+
+            z -
+            camera.position.z
+        ) <
+        6
+    ) {
+        // Never materialize a new hostile inside the player/camera.
+        return;
+    }
+
     const stats =
         entityStats(
             type
@@ -7696,24 +7717,62 @@ function updateEntities(
         if (
             hostileAggro
         ) {
+            const attackDistance =
+                e.type ===
+                "brute"
+                    ? 1.75
+                    : e.type ===
+                    "crawler"
+                        ? 1.15
+                        : 1.4;
+
             dir =
                 Math.atan2(
                     dx,
                     dz
                 );
 
-            speed =
-                e.speed *
-                (
-                    dist <
-                    8
-                        ? 1.22
-                        : 1
-                );
+            if (
+                dist <
+                attackDistance *
+                0.65
+            ) {
+                // Push a monster back out if it has already overlapped the
+                // camera. That prevents the giant black-screen monster bug.
+                dir +=
+                    Math.PI;
+
+                speed =
+                    Math.max(
+                        e.speed *
+                        1.8,
+
+                        7
+                    );
+            }
+
+            else if (
+                dist <=
+                attackDistance
+            ) {
+                speed =
+                    0;
+            }
+
+            else {
+                speed =
+                    e.speed *
+                    (
+                        dist <
+                        8
+                            ? 1.22
+                            : 1
+                    );
+            }
 
             if (
                 dist <
-                1.45
+                attackDistance
                 &&
                 e.attackCooldown <=
                 0
@@ -9180,6 +9239,17 @@ function startGame() {
             1,
             1
         );
+
+    waterGeometry =
+        new THREE.PlaneGeometry(
+            1,
+            1
+        );
+
+    waterGeometry.rotateX(
+        -Math.PI /
+        2
+    );
 
     setupControls();
 
