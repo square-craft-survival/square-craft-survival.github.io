@@ -78,16 +78,17 @@ const handHud = css(document.createElement("div"), {
 
 const handHudItem = css(document.createElement("div"), {
     position: "absolute",
-    left: "3px",
-    bottom: "48px",
-    width: "52px",
-    height: "52px",
+    left: "6px",
+    bottom: "50px",
+    width: "48px",
+    height: "48px",
     display: "none",
     backgroundSize: "100% 100%",
     backgroundRepeat: "no-repeat",
     imageRendering: "pixelated",
     filter: "drop-shadow(3px 4px 0 rgba(0,0,0,.50))",
-    transformOrigin: "right bottom"
+    transformOrigin: "right bottom",
+    zIndex: "1"
 });
 
 const handHudSleeve = css(document.createElement("div"), {
@@ -130,7 +131,61 @@ const handHudFingers = css(document.createElement("div"), {
     transformOrigin: "center top"
 });
 
-handHud.append(handHudItem, handHudSleeve, handHudHand, handHudFingers);
+// A single painted hand sprite reads much more clearly than a pile of little
+// CSS boxes.  The sleeve and fingers are one connected arm that grips the
+// bottom-right corner of the held item.
+const handHudArt = css(document.createElement("canvas"), {
+    position: "absolute",
+    inset: "0",
+    width: "112px",
+    height: "118px",
+    imageRendering: "pixelated",
+    pointerEvents: "none",
+    zIndex: "2"
+});
+
+handHudArt.width = 112;
+handHudArt.height = 118;
+
+function drawPlayerHandSprite() {
+    const ctx = handHudArt.getContext("2d");
+    ctx.clearRect(0, 0, handHudArt.width, handHudArt.height);
+    ctx.imageSmoothingEnabled = false;
+
+    const box = (cx, cy, width, height, angle, outline, fill, highlight) => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.fillStyle = outline;
+        ctx.fillRect(-width / 2 - 3, -height / 2 - 3, width + 6, height + 6);
+        ctx.fillStyle = fill;
+        ctx.fillRect(-width / 2, -height / 2, width, height);
+        ctx.fillStyle = highlight;
+        ctx.fillRect(-width / 2 + 4, -height / 2 + 4, 5, Math.max(4, height - 8));
+        ctx.restore();
+    };
+
+    // Long sleeve: it comes in from the lower-right like an actual arm,
+    // instead of being a floating blue triangle in the middle of the screen.
+    box(91, 95, 34, 66, -0.42, "#10263b", "#3571a5", "#5b95c7");
+    box(76, 66, 34, 31, -0.42, "#65381f", "#df9a69", "#f5bf91");
+
+    // Palm, thumb, and three short fingers visibly curl over the held item.
+    box(60, 58, 31, 22, -0.42, "#65381f", "#e7a574", "#ffd0a3");
+    box(49, 62, 16, 10, -0.42, "#65381f", "#d89161", "#f2bb8c");
+    for (const [x, y] of [[52, 49], [58, 45], [64, 42]]) {
+        box(x, y, 11, 6, -0.42, "#65381f", "#e5a171", "#ffd0a3");
+    }
+
+    // Dark cuff makes the skin and blue sleeve read as one player arm.
+    box(82, 78, 35, 8, -0.42, "#10263b", "#244d73", "#4d84b3");
+}
+
+drawPlayerHandSprite();
+handHudSleeve.style.display = "none";
+handHudHand.style.display = "none";
+handHudFingers.style.display = "none";
+handHud.append(handHudItem, handHudArt, handHudSleeve, handHudHand, handHudFingers);
 gameContainer.appendChild(handHud);
 
 const lootToast = css(document.createElement("div"), {
@@ -12853,10 +12908,10 @@ function updateFirstPersonRig(delta) {
 
     firstPersonRig.visible = visible;
     handHud.style.display = visible ? "block" : "none";
-    // Keep actions as a short, readable wrist tap — no giant looping arm
-    // rotation while a block is held down.
-    handHud.style.transform = `translateY(${Math.round(bob + swing * 3)}px) rotate(${-3 + swing * 3}deg)`;
-    handHudItem.style.transform = `translateY(${-swing * 2}px) rotate(${-10 - swing * 4}deg)`;
+    // The hand stays anchored like a real first-person arm. Mining moves it
+    // only a couple of pixels forward; it never spins like a loading icon.
+    handHud.style.transform = `translateY(${Math.round(bob + swing * 2)}px)`;
+    handHudItem.style.transform = `translateY(${-swing}px) rotate(-8deg)`;
 }
 
 // ============================================================
