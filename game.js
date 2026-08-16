@@ -970,14 +970,68 @@ function swampPoolAt(
         return false;
     }
 
-    // Slow waves make proper connected pools instead of water sprinkled into
-    // every other grass block.
-    const poolShape =
-        Math.sin(x * 0.055 + z * 0.012)
-        + Math.cos(z * 0.065 - x * 0.015)
-        + Math.sin((x - z) * 0.028);
+    // Seed a few small ponds per swamp area. Checking adjacent cells lets a
+    // pond cross a cell border without turning the entire biome into a lake.
+    const cellSize = 18;
+    const cellX = Math.floor(x / cellSize);
+    const cellZ = Math.floor(z / cellSize);
 
-    return poolShape > 1.48;
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+            const pondCellX = cellX + dx;
+            const pondCellZ = cellZ + dz;
+
+            if (
+                hash2(
+                    pondCellX,
+                    pondCellZ,
+                    1911
+                ) > 0.30
+            ) {
+                continue;
+            }
+
+            const pondX =
+                pondCellX * cellSize + 5 + Math.floor(
+                    hash2(
+                        pondCellX,
+                        pondCellZ,
+                        1912
+                    ) * 8
+                );
+
+            const pondZ =
+                pondCellZ * cellSize + 5 + Math.floor(
+                    hash2(
+                        pondCellX,
+                        pondCellZ,
+                        1913
+                    ) * 8
+                );
+
+            const radius =
+                2.2 + hash2(
+                    pondCellX,
+                    pondCellZ,
+                    1914
+                ) * 1.3;
+
+            const irregularRadius = radius * (
+                0.88 + 0.12 * Math.sin(x * 1.7 + z * 0.9)
+            );
+
+            if (
+                Math.hypot(
+                    x - pondX,
+                    z - pondZ
+                ) <= irregularRadius
+            ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 function caveNoise(
@@ -1293,19 +1347,49 @@ function insideEntrance(
                 }
             }
 
-            // A rounded room at the bottom joins the normal underground caves.
+            // A rounded room with a solid floor waits at the bottom of the
+            // ramp. The old version hollowed out the floor here and made a pit.
             const chamberDistance = Math.hypot(
                 x - e.x,
                 z - (e.z + rampEnd + 1)
             );
 
+            const chamberFloor = e.ground - 5;
+
             if (
-                chamberDistance < 2.8
+                chamberDistance < 2.45
                 &&
-                y <= e.ground - 4
-                && y >= e.ground - 10
+                y > chamberFloor
+                && y <= chamberFloor + 4
             ) {
                 return true;
+            }
+
+            // A short winding tunnel makes the entrance feel like it joins a
+            // cave system, while keeping enough headroom to walk through.
+            const tunnelForward = forward - rampEnd;
+
+            if (
+                tunnelForward >= 1
+                && tunnelForward <= 8
+            ) {
+                const tunnelFloor =
+                    chamberFloor - Math.floor(tunnelForward / 5);
+
+                const tunnelCenterX =
+                    e.x + Math.round(
+                        Math.sin(
+                            tunnelForward * 0.65 + e.x * 0.11
+                        )
+                    );
+
+                if (
+                    Math.abs(x - tunnelCenterX) <= 1
+                    && y > tunnelFloor
+                    && y <= tunnelFloor + 3
+                ) {
+                    return true;
+                }
             }
         }
     }
@@ -1344,6 +1428,46 @@ function caveStairBlocks(
         }
     }
 
+    const chamberFloor = entrance.ground - 5;
+
+    for (let chamberX = -2; chamberX <= 2; chamberX++) {
+        for (let chamberZ = -2; chamberZ <= 2; chamberZ++) {
+            if (
+                Math.hypot(chamberX, chamberZ) > 2.45
+            ) {
+                continue;
+            }
+
+            stairs.push({
+                x: entrance.x + chamberX,
+                y: chamberFloor,
+                z: entrance.z + rampEnd + 1 + chamberZ,
+                type: "stone"
+            });
+        }
+    }
+
+    for (let tunnelForward = 1; tunnelForward <= 8; tunnelForward++) {
+        const tunnelFloor =
+            chamberFloor - Math.floor(tunnelForward / 5);
+
+        const tunnelCenterX =
+            entrance.x + Math.round(
+                Math.sin(
+                    tunnelForward * 0.65 + entrance.x * 0.11
+                )
+            );
+
+        for (let side = -1; side <= 1; side++) {
+            stairs.push({
+                x: tunnelCenterX + side,
+                y: tunnelFloor,
+                z: entrance.z + rampEnd + tunnelForward,
+                type: "stone"
+            });
+        }
+    }
+
     return stairs;
 }
 
@@ -1351,68 +1475,15 @@ function shouldCarveCave(
     x,
     y,
     z,
-    surface
+    _surface
 ) {
-    if (
-        y >=
-        surface -
-        2
-        ||
-        y <=
-        BEDROCK_Y +
-        1
-    ) {
-        return false;
-    }
-
-    if (
-        insideEntrance(
-            x,
-            y,
-            z
-        )
-    ) {
-        return true;
-    }
-
-    const n =
-        caveNoise(
-            x,
-            y,
-            z
-        );
-
-    const wobble =
-        (
-            hash3(
-                Math.floor(
-                    x /
-                    3
-                ),
-
-                Math.floor(
-                    y /
-                    2
-                ),
-
-                Math.floor(
-                    z /
-                    3
-                ),
-
-                99
-            )
-            -
-            0.5
-        )
-        *
-        0.7;
-
-    return (
-        n +
-        wobble
-        >
-        2.55
+    // Cave noise used to hollow giant square rooms everywhere. Caves are now
+    // intentionally made from the walkable entrance, its chamber, and its
+    // winding tunnel, which keeps them reliable and playable.
+    return insideEntrance(
+        x,
+        y,
+        z
     );
 }
 
