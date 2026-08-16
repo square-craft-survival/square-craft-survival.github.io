@@ -387,7 +387,8 @@ const INVENTORY = {
 
     beef: 0,
     pork: 0,
-    mutton: 0
+    mutton: 0,
+    chicken: 0
 };
 
 const hotbarItems = [
@@ -523,7 +524,8 @@ const RECIPES = [
 const FOOD = {
     beef: 6,
     pork: 5,
-    mutton: 4
+    mutton: 4,
+    chicken: 3
 };
 
 const NAMES = {
@@ -562,7 +564,8 @@ const NAMES = {
 
     beef: "Beef",
     pork: "Pork",
-    mutton: "Mutton"
+    mutton: "Mutton",
+    chicken: "Chicken"
 };
 
 const nameOf = type => NAMES[type] || type;
@@ -1121,18 +1124,20 @@ function structureForChunk(
             808
         );
 
-    if (
-        r <
-        0.025
-    ) {
+    if (r < 0.020) {
         return "hut";
     }
 
-    if (
-        r <
-        0.043
-    ) {
+    if (r < 0.036) {
         return "ruin";
+    }
+
+    if (r < 0.048) {
+        return "well";
+    }
+
+    if (r < 0.058) {
+        return "tower";
     }
 
     return null;
@@ -4608,7 +4613,8 @@ function itemIcon(
         [
             "beef",
             "pork",
-            "mutton"
+            "mutton",
+            "chicken"
         ].includes(
             type
         )
@@ -4624,7 +4630,10 @@ function itemIcon(
 
                     ? "#c56f73"
 
-                    : "#8c4b3e";
+                    : type ===
+                    "chicken"
+                        ? "#d8c49a"
+                        : "#8c4b3e";
 
         x.fillStyle =
             base;
@@ -6051,6 +6060,65 @@ function updateSwimmingState(
         }
     }
 
+    else if (
+        type ===
+        "well"
+    ) {
+        // Low stone well with shallow water and a wooden roof frame.
+        for (let x = -2; x <= 2; x++) {
+            for (let z = -2; z <= 2; z++) {
+                const edge = Math.abs(x) === 2 || Math.abs(z) === 2;
+
+                if (edge) {
+                    add(ox + x, g + 1, oz + z, "stone");
+                }
+
+                else if (Math.abs(x) <= 1 && Math.abs(z) <= 1) {
+                    add(ox + x, g + 2, oz + z, "water");
+                }
+            }
+        }
+
+        for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
+            for (let y = 2; y <= 4; y++) {
+                add(ox + x, g + y, oz + z, "wood");
+            }
+        }
+
+        for (let x = -3; x <= 3; x++) {
+            add(ox + x, g + 5, oz - 2, "craftingWood");
+            add(ox + x, g + 5, oz + 2, "craftingWood");
+        }
+    }
+
+    else if (
+        type ===
+        "tower"
+    ) {
+        // A small ruined watchtower with a loot-like ore marker at its base.
+        for (let x = -2; x <= 2; x++) {
+            for (let z = -2; z <= 2; z++) {
+                add(ox + x, g + 1, oz + z, "stone");
+            }
+        }
+
+        for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
+            for (let y = 2; y <= 8; y++) {
+                if (y !== 5 || hash3(ox + x, g + y, oz + z, 916) > 0.22) {
+                    add(ox + x, g + y, oz + z, "stone");
+                }
+            }
+        }
+
+        for (let x = -3; x <= 3; x++) {
+            for (let z = -3; z <= 3; z++) {
+                add(ox + x, g + 8, oz + z, "craftingWood");
+            }
+        }
+
+        add(ox, g + 2, oz, "goldOre");
+    }
+
     else {
         air =
             Math.min(
@@ -6130,7 +6198,8 @@ const MONSTER_TYPES =
         "rake",
         "shade",
         "crawler",
-        "brute"
+        "brute",
+        "wraith"
     ]);
 
 let monsterSpawnTimer =
@@ -6696,6 +6765,48 @@ function buildAnimalModel(
     }
 
     // ========================================================
+    // DEER / BOAR / CHICKEN
+    // ========================================================
+    else if (type === "deer") {
+        part({ x: 0.62, y: 0.72, z: 1.34 }, 0x9b633c, { x: 0, y: 0.86, z: 0 });
+        part({ x: 0.28, y: 0.82, z: 0.28 }, 0xb9784b, { x: 0, y: 1.28, z: 0.46 });
+        part({ x: 0.38, y: 0.34, z: 0.42 }, 0xb9784b, { x: 0, y: 1.62, z: 0.62 });
+        for (const x of [-0.13, 0.13]) {
+            part({ x: 0.055, y: 0.055, z: 0.025 }, 0x16100c, { x, y: 1.68, z: 0.84 });
+            part({ x: 0.05, y: 0.42, z: 0.05 }, 0xe0c69a, { x, y: 2.03, z: 0.61 });
+        }
+        for (const [x, z] of [[-0.21, -0.40], [0.21, -0.40], [-0.21, 0.38], [0.21, 0.38]]) {
+            part({ x: 0.12, y: 0.92, z: 0.12 }, 0x604026, { x, y: 0.46, z });
+        }
+    }
+
+    else if (type === "boar") {
+        part({ x: 0.84, y: 0.62, z: 1.12 }, 0x3d2b26, { x: 0, y: 0.68, z: 0 });
+        part({ x: 0.56, y: 0.46, z: 0.48 }, 0x51362d, { x: 0, y: 0.72, z: 0.72 });
+        part({ x: 0.36, y: 0.20, z: 0.18 }, 0x6f4d40, { x: 0, y: 0.57, z: 1.02 });
+        for (const x of [-0.19, 0.19]) {
+            part({ x: 0.05, y: 0.05, z: 0.025 }, 0xf2c6a1, { x, y: 0.82, z: 0.96 });
+            part({ x: 0.055, y: 0.18, z: 0.035 }, 0xe9e1c7, { x, y: 0.50, z: 1.03 });
+        }
+        for (const [x, z] of [[-0.25, -0.32], [0.25, -0.32], [-0.25, 0.32], [0.25, 0.32]]) {
+            part({ x: 0.16, y: 0.50, z: 0.16 }, 0x241a18, { x, y: 0.25, z });
+        }
+    }
+
+    else if (type === "chicken") {
+        part({ x: 0.46, y: 0.56, z: 0.58 }, 0xf4f1df, { x: 0, y: 0.66, z: 0 });
+        part({ x: 0.34, y: 0.36, z: 0.34 }, 0xf7f4e8, { x: 0, y: 1.08, z: 0.28 });
+        part({ x: 0.14, y: 0.10, z: 0.16 }, 0xe9a72f, { x: 0, y: 1.03, z: 0.54 });
+        for (const x of [-0.13, 0.13]) {
+            part({ x: 0.18, y: 0.32, z: 0.06 }, 0xd9d4c1, { x, y: 0.70, z: 0 });
+            part({ x: 0.04, y: 0.38, z: 0.04 }, 0xe0a62b, { x, y: 0.20, z: 0 });
+        }
+        for (const x of [-0.09, 0.09]) {
+            part({ x: 0.045, y: 0.045, z: 0.02 }, 0x17120e, { x, y: 1.15, z: 0.47 });
+        }
+    }
+
+    // ========================================================
     // NIGHT MONSTERS
     // ========================================================
     else if (
@@ -6915,28 +7026,49 @@ function buildAnimalModel(
     }
 
     // ========================================================
-    // MIMIC — a simple, tall shadow-man silhouette
+    // WRAITH — floating cave spirit
+    // ========================================================
+    else if (type === "wraith") {
+        part({ x: 0.46, y: 0.90, z: 0.34 }, 0x253b54, { x: 0, y: 1.25, z: 0 });
+        part({ x: 0.52, y: 0.42, z: 0.42 }, 0x354d6c, { x: 0, y: 1.90, z: 0.02 });
+        for (const eyeX of [-0.12, 0.12]) {
+            part({ x: 0.07, y: 0.07, z: 0.025 }, 0x91f3ff, { x: eyeX, y: 1.95, z: 0.24 });
+        }
+        for (const armX of [-0.42, 0.42]) {
+            part({ x: 0.08, y: 1.12, z: 0.08 }, 0x1b2d42, { x: armX, y: 1.18, z: 0 });
+        }
+        part({ x: 0.28, y: 0.56, z: 0.22 }, 0x1d3048, { x: 0, y: 0.46, z: 0 });
+    }
+
+    // ========================================================
+    // MIMIC — Steve-shaped black-shirt nightmare
     // ========================================================
     else if (type === "mimic") {
-        const shadow = 0x0b0c10;
-        const edge = 0x20232a;
-        const eye = 0xf3f3e8;
+        const skin = 0xb97862;
+        const shirt = 0x101218;
+        const pants = 0x202a42;
 
-        // Bigger head, directly above the shoulders. No chest mouth/teeth.
-        part({ x: 0.45, y: 0.52, z: 0.38 }, edge, { x: 0, y: 2.13, z: 0.01 });
-        part({ x: 0.40, y: 1.08, z: 0.30 }, shadow, { x: 0, y: 1.32, z: 0 });
+        // Blocky human proportions: head, black shirt, arms, and pants.
+        part({ x: 0.56, y: 0.56, z: 0.52 }, skin, { x: 0, y: 2.04, z: 0.02 });
+        part({ x: 0.58, y: 0.12, z: 0.54 }, 0x1b1518, { x: 0, y: 2.30, z: 0.02 });
+        part({ x: 0.52, y: 0.84, z: 0.30 }, shirt, { x: 0, y: 1.38, z: 0 });
 
-        for (const eyeX of [-0.11, 0.11]) {
-            part({ x: 0.085, y: 0.07, z: 0.025 }, eye, { x: eyeX, y: 2.19, z: 0.215 });
+        for (const eyeX of [-0.14, 0.14]) {
+            part({ x: 0.11, y: 0.075, z: 0.025 }, 0xff3030, { x: eyeX, y: 2.11, z: 0.29 });
         }
 
-        for (const armX of [-0.31, 0.31]) {
-            part({ x: 0.10, y: 1.38, z: 0.10 }, shadow, { x: armX, y: 1.13, z: 0 });
-            part({ x: 0.15, y: 0.22, z: 0.14 }, edge, { x: armX, y: 0.34, z: 0.01 });
+        part({ x: 0.31, y: 0.075, z: 0.025 }, 0x17070a, { x: 0, y: 1.91, z: 0.292 });
+        for (const toothX of [-0.10, 0, 0.10]) {
+            part({ x: 0.035, y: 0.06, z: 0.03 }, 0xe9e3d3, { x: toothX, y: 1.93, z: 0.307 });
         }
 
-        for (const legX of [-0.13, 0.13]) {
-            part({ x: 0.13, y: 1.28, z: 0.13 }, shadow, { x: legX, y: 0.52, z: 0 });
+        for (const armX of [-0.40, 0.40]) {
+            part({ x: 0.18, y: 0.64, z: 0.18 }, shirt, { x: armX, y: 1.45, z: 0 });
+            part({ x: 0.15, y: 0.42, z: 0.15 }, skin, { x: armX, y: 0.94, z: 0 });
+        }
+
+        for (const legX of [-0.16, 0.16]) {
+            part({ x: 0.21, y: 1.10, z: 0.21 }, pants, { x: legX, y: 0.55, z: 0 });
         }
     }
 
@@ -7192,6 +7324,18 @@ function entityStats(
         };
     }
 
+    if (type === "deer") {
+        return { health: 5, speed: 1.25 };
+    }
+
+    if (type === "boar") {
+        return { health: 7, speed: 1.05 };
+    }
+
+    if (type === "chicken") {
+        return { health: 2, speed: 0.72 };
+    }
+
     if (
         type ===
         "shade"
@@ -7254,6 +7398,10 @@ function entityStats(
             attack:
                 4
         };
+    }
+
+    if (type === "wraith") {
+        return { health: 9, speed: 1.65, attack: 2.5 };
     }
 
     return {
@@ -7351,19 +7499,34 @@ function spawnEntityForChunk(
         ||
         (
             r <
-        0.11
+        0.09
 
             ? "cow"
 
             : r <
-            0.22
+            0.18
 
                 ? "pig"
 
                 : r <
-                0.33
+                0.27
 
                     ? "sheep"
+
+                    : r <
+                    0.36
+
+                        ? "deer"
+
+                        : r <
+                        0.44
+
+                            ? "boar"
+
+                            : r <
+                            0.51
+
+                                ? "chicken"
 
                     : null
         );
@@ -7504,6 +7667,25 @@ function spawnEntityForChunk(
             id
         );
 
+    // Save each part's default pose once. The entity update loop can then
+    // animate walking without permanently twisting the model every frame.
+    group.traverse(
+        part => {
+            if (!part.isMesh) {
+                return;
+            }
+
+            part.userData.basePose = {
+                x: part.position.x,
+                y: part.position.y,
+                z: part.position.z,
+                rotationX: part.rotation.x,
+                rotationY: part.rotation.y,
+                rotationZ: part.rotation.z
+            };
+        }
+    );
+
     group.position.set(
         x,
 
@@ -7597,6 +7779,15 @@ function spawnEntityForChunk(
         flee:
             0,
 
+        animationTime:
+            hash2(
+                x,
+                z,
+                515
+            ) *
+            Math.PI *
+            2,
+
         chunkKey:
             chunk.key
     };
@@ -7684,18 +7875,21 @@ function spawnMonsterForChunk(
 
     const type =
         r <
-        0.22
+        0.18
             ? "mimic"
             : r <
-            0.43
+            0.36
                 ? "rake"
                 : r <
-            0.64
-                ? "shade"
-                : r <
-                0.84
+            0.53
+                    ? "shade"
+                    : r <
+                0.70
                     ? "crawler"
-                    : "brute";
+                    : r <
+                    0.86
+                        ? "brute"
+                        : "wraith";
 
     spawnEntityForChunk(
         chunk,
@@ -8127,6 +8321,73 @@ function entityCanMove(
     );
 }
 
+function animateEntityModel(
+    e,
+    moving
+) {
+    const walkAmount =
+        moving
+            ? 0.38
+            : 0.025;
+
+    const stride =
+        Math.sin(
+            e.animationTime
+        ) *
+        walkAmount;
+
+    for (const part of e.group.children) {
+        const base = part.userData.basePose;
+
+        if (!base) {
+            continue;
+        }
+
+        part.position.set(
+            base.x,
+            base.y,
+            base.z
+        );
+
+        part.rotation.set(
+            base.rotationX,
+            base.rotationY,
+            base.rotationZ
+        );
+
+        const height =
+            part.geometry.parameters.height || 0;
+
+        const looksLikeLimb =
+            height >= 0.40
+            &&
+            (
+                Math.abs(base.x) > 0.20
+                ||
+                base.y < 0.72
+            );
+
+        if (looksLikeLimb) {
+            const side =
+                base.x < 0
+                    ? -1
+                    : 1;
+
+            part.rotation.x +=
+                stride * side;
+        }
+
+        // Heads and bodies breathe/bob a little even when standing still.
+        else if (base.y > 0.70) {
+            part.position.y +=
+                Math.sin(
+                    e.animationTime * 0.5
+                ) *
+                0.012;
+        }
+    }
+}
+
 function updateEntities(
     delta
 ) {
@@ -8314,7 +8575,11 @@ function updateEntities(
             speed *
             delta;
 
+        let moved = false;
+
         if (
+            speed > 0.02
+            &&
             entityCanMove(
                 e,
                 nx,
@@ -8329,6 +8594,8 @@ function updateEntities(
 
             e.direction =
                 dir;
+
+            moved = true;
         }
 
         else {
@@ -8341,6 +8608,21 @@ function updateEntities(
                 );
         }
 
+        e.animationTime +=
+            delta *
+            (
+                moved
+                    ? 8
+                    : 2
+            );
+
+        const bob =
+            e.type === "wraith"
+                ? Math.sin(e.animationTime * 1.5) * 0.12
+                : moved
+                    ? Math.abs(Math.sin(e.animationTime)) * 0.035
+                    : Math.sin(e.animationTime * 0.5) * 0.012;
+
         e.group.position.y =
             terrainHeight(
                 Math.round(
@@ -8351,7 +8633,13 @@ function updateEntities(
                     e.group.position.z
                 )
             ) +
-            0.5;
+            0.5 +
+            bob;
+
+        animateEntityModel(
+            e,
+            moved
+        );
 
         e.group.rotation.y =
             dir;
@@ -8867,6 +9155,36 @@ function updateMovement(
         moveVertical(
             verticalVelocity *
             delta
+        );
+    }
+
+    else if (
+        e.type ===
+        "deer"
+    ) {
+        addItem(
+            "mutton",
+            2
+        );
+    }
+
+    else if (
+        e.type ===
+        "boar"
+    ) {
+        addItem(
+            "pork",
+            2
+        );
+    }
+
+    else if (
+        e.type ===
+        "chicken"
+    ) {
+        addItem(
+            "chicken",
+            1
         );
     }
 
