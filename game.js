@@ -345,11 +345,12 @@ const EYE_HEIGHT = 1.7;
 const PLAYER_HEIGHT = 1.8;
 const PLAYER_RADIUS = 0.32;
 
-let health = 20;
+let health = 30;
 let hunger = 20;
 let equippedArmor = null;
+let equippedShield = false;
 
-const MAX_HEALTH = 20;
+const MAX_HEALTH = 30;
 const MAX_HUNGER = 20;
 const MAX_AIR = 10;
 
@@ -411,6 +412,7 @@ const BLOCKS = [
     "blackwoodLeaves",
     "stone",
     "craftingWood",
+    "furnace",
     "door",
     "doorOpen",
     "doorTop",
@@ -420,6 +422,7 @@ const BLOCKS = [
     "ironOre",
     "goldOre",
     "diamondOre",
+    "crystalOre",
     "bedrock"
 ];
 
@@ -439,12 +442,14 @@ const PLACEABLE = new Set([
     "blackwoodLeaves",
     "stone",
     "craftingWood",
+    "furnace",
     "door",
     "torch",
     "coalOre",
     "ironOre",
     "goldOre",
-    "diamondOre"
+    "diamondOre",
+    "crystalOre"
 ]);
 
 const INVENTORY = {
@@ -463,13 +468,17 @@ const INVENTORY = {
     blackwoodLeaves: 0,
     stone: 0,
     craftingWood: 0,
+    furnace: 0,
     door: 0,
     torch: 0,
 
     coal: 0,
+    rawIron: 0,
     iron: 0,
+    rawGold: 0,
     gold: 0,
     diamond: 0,
+    crystal: 0,
 
     sticks: 0,
 
@@ -495,6 +504,13 @@ const INVENTORY = {
     ironArmor: 0,
     goldArmor: 0,
     diamondArmor: 0,
+
+    shield: 0,
+    bow: 0,
+    arrow: 0,
+    flintlockPistol: 0,
+    flintlockRifle: 0,
+    musketBall: 0,
 
     beef: 0,
     pork: 0,
@@ -546,6 +562,43 @@ const RECIPES = [
             brick: 1
         },
         text: "4 Clay to 1 Brick"
+    },
+
+    {
+        name: "Furnace",
+        input: {
+            stone: 8
+        },
+        output: {
+            furnace: 1
+        },
+        text: "8 Stone"
+    },
+
+    {
+        name: "Smelt Iron",
+        input: {
+            rawIron: 1,
+            coal: 1
+        },
+        output: {
+            iron: 1
+        },
+        requiresFurnace: true,
+        text: "1 Raw Iron + 1 Coal (near a Furnace)"
+    },
+
+    {
+        name: "Smelt Gold",
+        input: {
+            rawGold: 1,
+            coal: 1
+        },
+        output: {
+            gold: 1
+        },
+        requiresFurnace: true,
+        text: "1 Raw Gold + 1 Coal (near a Furnace)"
     },
 
     {
@@ -760,6 +813,77 @@ const RECIPES = [
     },
 
     {
+        name: "Shield",
+        input: {
+            craftingWood: 6,
+            iron: 2
+        },
+        output: {
+            shield: 1
+        },
+        text: "6 Crafting Wood + 2 Iron"
+    },
+
+    {
+        name: "Bow",
+        input: {
+            craftingWood: 3,
+            sticks: 3
+        },
+        output: {
+            bow: 1
+        },
+        text: "3 Crafting Wood + 3 Sticks"
+    },
+
+    {
+        name: "Arrows",
+        input: {
+            sticks: 1,
+            coal: 1
+        },
+        output: {
+            arrow: 6
+        },
+        text: "1 Stick + 1 Coal → 6 Arrows"
+    },
+
+    {
+        name: "Flintlock Pistol",
+        input: {
+            iron: 4,
+            craftingWood: 3
+        },
+        output: {
+            flintlockPistol: 1
+        },
+        text: "4 Iron + 3 Crafting Wood"
+    },
+
+    {
+        name: "Flintlock Rifle",
+        input: {
+            iron: 6,
+            craftingWood: 4
+        },
+        output: {
+            flintlockRifle: 1
+        },
+        text: "6 Iron + 4 Crafting Wood"
+    },
+
+    {
+        name: "Musket Balls",
+        input: {
+            iron: 1
+        },
+        output: {
+            musketBall: 8
+        },
+        text: "1 Iron → 8 Musket Balls"
+    },
+
+    {
         name: "Door",
         input: {
             craftingWood: 6,
@@ -809,13 +933,17 @@ const NAMES = {
     stone: "Stone",
 
     craftingWood: "Crafting Wood",
+    furnace: "Furnace",
     door: "Door",
     torch: "Torch",
 
     coal: "Coal",
+    rawIron: "Raw Iron",
     iron: "Iron",
+    rawGold: "Raw Gold",
     gold: "Gold",
     diamond: "Diamond",
+    crystal: "Cave Crystal",
 
     woodAxe: "Wood Axe",
     woodPickaxe: "Wood Pickaxe",
@@ -838,6 +966,13 @@ const NAMES = {
     ironArmor: "Iron Armor",
     goldArmor: "Gold Armor",
     diamondArmor: "Diamond Armor",
+
+    shield: "Shield",
+    bow: "Bow",
+    arrow: "Arrow",
+    flintlockPistol: "Flintlock Pistol",
+    flintlockRifle: "Flintlock Rifle",
+    musketBall: "Musket Ball",
 
     sticks: "Sticks",
 
@@ -894,18 +1029,33 @@ const isArmor = item =>
         "diamondArmor"
     ].includes(item);
 
-const armorProtection = () =>
-    equippedArmor === "diamondArmor"
-        ? 0.75
-        : equippedArmor === "goldArmor"
-            ? 0.60
-            : equippedArmor === "ironArmor"
-        ? 0.5
-        : equippedArmor === "stoneArmor"
-            ? 0.38
-        : equippedArmor === "woodArmor"
-            ? 0.25
-            : 0;
+const isShield = item => item === "shield";
+
+const rangedWeaponStats = item =>
+    item === "bow"
+        ? { ammo: "arrow", damage: 7, range: 22, cooldown: 0.55, sound: "ARROW" }
+        : item === "flintlockPistol"
+            ? { ammo: "musketBall", damage: 13, range: 24, cooldown: 0.78, sound: "PISTOL" }
+            : item === "flintlockRifle"
+                ? { ammo: "musketBall", damage: 19, range: 34, cooldown: 1.05, sound: "RIFLE" }
+                : null;
+
+const armorProtection = () => {
+    const suit =
+        equippedArmor === "diamondArmor"
+            ? 0.75
+            : equippedArmor === "goldArmor"
+                ? 0.60
+                : equippedArmor === "ironArmor"
+                    ? 0.5
+                    : equippedArmor === "stoneArmor"
+                        ? 0.38
+                        : equippedArmor === "woodArmor"
+                            ? 0.25
+                            : 0;
+
+    return Math.min(0.86, suit + (equippedShield ? 0.12 : 0));
+};
 
 const pickTier = item =>
     item === "diamondPickaxe"
@@ -958,6 +1108,87 @@ let worldCycleSeconds =
     DAY_DURATION_SECONDS;
 
 let isNight = false;
+
+const SAVE_KEY = "square-craft-survival-save-v3";
+let saveTimer = 0;
+
+function saveGame() {
+    if (!camera) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify({
+            inventory: INVENTORY,
+            hotbar: hotbarItems,
+            selectedHotbar,
+            health,
+            hunger,
+            equippedArmor,
+            equippedShield,
+            worldCycleSeconds,
+            player: {
+                x: camera.position.x,
+                y: camera.position.y,
+                z: camera.position.z,
+                yaw,
+                pitch
+            },
+            edits: [...chunkEdits.entries()].map(([key, edits]) => [key, [...edits.entries()]]),
+            killed: [...killedEntityIds]
+        }));
+    } catch (_) {
+        // Saving is a bonus in browsers that allow it; gameplay must still run
+        // in private or restricted browser modes.
+    }
+}
+
+function loadGame() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+
+        if (!saved || !saved.player) {
+            return false;
+        }
+
+        for (const type of Object.keys(INVENTORY)) {
+            INVENTORY[type] = Math.max(0, Number(saved.inventory?.[type]) || 0);
+        }
+
+        for (let i = 0; i < hotbarItems.length; i++) {
+            const type = saved.hotbar?.[i] || null;
+            hotbarItems[i] = type in INVENTORY && INVENTORY[type] > 0 ? type : null;
+        }
+
+        selectedHotbar = clamp(Number(saved.selectedHotbar) || 0, 0, hotbarItems.length - 1);
+        health = clamp(Number(saved.health) || MAX_HEALTH, 1, MAX_HEALTH);
+        hunger = clamp(Number(saved.hunger) || MAX_HUNGER, 0, MAX_HUNGER);
+        equippedArmor = isArmor(saved.equippedArmor) ? saved.equippedArmor : null;
+        equippedShield = saved.equippedShield === true;
+        worldCycleSeconds = Number.isFinite(saved.worldCycleSeconds)
+            ? saved.worldCycleSeconds % WORLD_CYCLE_SECONDS
+            : worldCycleSeconds;
+
+        chunkEdits.clear();
+        for (const [key, edits] of saved.edits || []) {
+            chunkEdits.set(key, new Map(edits));
+        }
+
+        killedEntityIds.clear();
+        for (const id of saved.killed || []) {
+            killedEntityIds.add(id);
+        }
+
+        camera.position.set(saved.player.x, saved.player.y, saved.player.z);
+        yaw = Number(saved.player.yaw) || 0;
+        pitch = clamp(Number(saved.player.pitch) || 0, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
+        camera.rotation.y = yaw;
+        camera.rotation.x = pitch;
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
 
 function updateDayNight(delta) {
     worldCycleSeconds =
@@ -1475,19 +1706,23 @@ function structureForChunk(
             808
         );
 
-    if (r < 0.020) {
+    if (r < 0.010) {
+        return "village";
+    }
+
+    if (r < 0.030) {
         return "hut";
     }
 
-    if (r < 0.036) {
+    if (r < 0.046) {
         return "ruin";
     }
 
-    if (r < 0.048) {
+    if (r < 0.058) {
         return "well";
     }
 
-    if (r < 0.058) {
+    if (r < 0.070) {
         return "tower";
     }
 
@@ -1800,9 +2035,10 @@ function insideEntrance(
             );
 
             const chamberFloor = e.ground - 5;
+            const chamberRadius = e.rakeLair ? 4.25 : 2.45;
 
             if (
-                chamberDistance < 2.45
+                chamberDistance < chamberRadius
                 &&
                 y > chamberFloor
                 && y <= chamberFloor +
@@ -1877,10 +2113,13 @@ function caveStairBlocks(
 
     const chamberFloor = entrance.ground - 5;
 
-    for (let chamberX = -2; chamberX <= 2; chamberX++) {
-        for (let chamberZ = -2; chamberZ <= 2; chamberZ++) {
+    const chamberRadius = entrance.rakeLair ? 4.25 : 2.45;
+    const chamberExtent = entrance.rakeLair ? 4 : 2;
+
+    for (let chamberX = -chamberExtent; chamberX <= chamberExtent; chamberX++) {
+        for (let chamberZ = -chamberExtent; chamberZ <= chamberExtent; chamberZ++) {
             if (
-                Math.hypot(chamberX, chamberZ) > 2.45
+                Math.hypot(chamberX, chamberZ) > chamberRadius
             ) {
                 continue;
             }
@@ -1911,6 +2150,48 @@ function caveStairBlocks(
                 y: tunnelFloor,
                 z: entrance.z + rampEnd + tunnelForward,
                 type: "stone"
+            });
+        }
+
+        // Supports and lanterns turn the back half of ordinary caves into a
+        // tiny abandoned mineshaft without blocking the walking lane.
+        if (!entrance.rakeLair && (tunnelForward === 3 || tunnelForward === 7)) {
+            for (const side of [-1, 1]) {
+                for (let height = 1; height <= 2; height++) {
+                    stairs.push({
+                        x: tunnelCenterX + side,
+                        y: tunnelFloor + height,
+                        z: entrance.z + rampEnd + tunnelForward,
+                        type: "wood"
+                    });
+                }
+            }
+
+            for (let side = -1; side <= 1; side++) {
+                stairs.push({
+                    x: tunnelCenterX + side,
+                    y: tunnelFloor + 3,
+                    z: entrance.z + rampEnd + tunnelForward,
+                    type: "craftingWood"
+                });
+            }
+
+            stairs.push({
+                x: tunnelCenterX - 1,
+                y: tunnelFloor + 1,
+                z: entrance.z + rampEnd + tunnelForward - 1,
+                type: "torch"
+            });
+        }
+    }
+
+    if (entrance.rakeLair) {
+        for (const [x, z] of [[-3, -2], [3, -2], [-3, 2], [3, 2]]) {
+            stairs.push({
+                x: entrance.x + x,
+                y: chamberFloor + 1,
+                z: entrance.z + rampEnd + 1 + z,
+                type: "torch"
             });
         }
     }
@@ -1961,7 +2242,7 @@ function caveFloorAt(
         Math.hypot(
             x - entrance.x,
             z - (entrance.z + rampEnd + 1)
-        ) < 2.45
+        ) < (entrance.rakeLair ? 4.25 : 2.45)
     ) {
         return entrance.ground - 5;
     }
@@ -2008,6 +2289,16 @@ function oreAt(
         0.006
     ) {
         return "diamondOre";
+    }
+
+    if (
+        y <=
+        -4
+        &&
+        r <
+        0.013
+    ) {
+        return "crystalOre";
     }
 
     if (
@@ -2473,6 +2764,43 @@ function structureBlocks(
 
         add(ox, g + 2, oz, "goldOre");
         add(ox, g + 2, oz - 1, "lootChest");
+        return out;
+    }
+
+    if (type === "village") {
+        // Three tiny homes make villages feel lived-in without turning chunk
+        // generation into a giant loading spike.
+        const homes = [[-5, -3], [0, 3], [5, -3]];
+
+        for (const [hx, hz] of homes) {
+            for (let x = -1; x <= 1; x++) {
+                for (let z = -1; z <= 1; z++) {
+                    add(ox + hx + x, g + 1, oz + hz + z, "craftingWood");
+                }
+            }
+
+            for (let y = 2; y <= 3; y++) {
+                for (let x = -1; x <= 1; x++) {
+                    for (let z = -1; z <= 1; z++) {
+                        const edge = Math.abs(x) === 1 || Math.abs(z) === 1;
+                        const doorway = z === 1 && x === 0 && y === 2;
+                        if (edge && !doorway) {
+                            add(ox + hx + x, g + y, oz + hz + z, "craftingWood");
+                        }
+                    }
+                }
+            }
+
+            for (let x = -2; x <= 2; x++) {
+                for (let z = -2; z <= 2; z++) {
+                    add(ox + hx + x, g + 4, oz + hz + z, "wood");
+                }
+            }
+
+            add(ox + hx, g + 2, oz + hz, "lootChest");
+            add(ox + hx - 1, g + 2, oz + hz + 1, "torch");
+        }
+
         return out;
     }
 
@@ -4025,6 +4353,16 @@ function createMaterials() {
                 craftingWoodTexture()
         });
 
+    materials.furnace =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#4b4b4b",
+                    ["#2c2c2c", "#777", "#1b1b1b"],
+                    42
+                )
+        });
+
     materials.door =
         new THREE.MeshLambertMaterial({
             map:
@@ -4105,6 +4443,17 @@ function createMaterials() {
                     "#35c9c8",
                     "#8af1ed"
                 )
+        });
+
+    materials.crystalOre =
+        new THREE.MeshLambertMaterial({
+            map:
+                oreTexture(
+                    "#754bc6",
+                    "#d5a7ff"
+                ),
+            emissive: 0x3a1b65,
+            emissiveIntensity: 0.55
         });
 
     materials.bedrock =
@@ -5141,6 +5490,15 @@ function itemIcon(
         );
     }
 
+    else if (type === "furnace") {
+        x.fillStyle = "#535353";
+        x.fillRect(2, 2, 12, 12);
+        x.fillStyle = "#242424";
+        x.fillRect(4, 5, 8, 7);
+        x.fillStyle = "#ff8e2b";
+        x.fillRect(6, 8, 4, 3);
+    }
+
     else if (
         type ===
         "door"
@@ -5169,9 +5527,12 @@ function itemIcon(
     else if (
         [
             "coal",
+            "rawIron",
             "iron",
+            "rawGold",
             "gold",
-            "diamond"
+            "diamond",
+            "crystal"
         ].includes(
             type
         )
@@ -5182,9 +5543,19 @@ function itemIcon(
                 "#080808"
             ],
 
+            rawIron: [
+                "#7f4e38",
+                "#be7b5c"
+            ],
+
             iron: [
                 "#a36d4f",
                 "#d09a79"
+            ],
+
+            rawGold: [
+                "#8a6e23",
+                "#d7ae42"
             ],
 
             gold: [
@@ -5195,6 +5566,11 @@ function itemIcon(
             diamond: [
                 "#35c9c8",
                 "#9afff6"
+            ],
+
+            crystal: [
+                "#754bc6",
+                "#d5a7ff"
             ]
         }[
             type
@@ -5309,6 +5685,40 @@ function itemIcon(
             "rgba(0,0,0,.28)";
         x.fillRect(6, 4, 1, 8);
         x.fillRect(10, 4, 1, 8);
+    }
+
+    else if (type === "shield") {
+        x.fillStyle = "#74431e";
+        x.fillRect(4, 2, 8, 11);
+        x.fillStyle = "#c5cfd6";
+        x.fillRect(5, 3, 6, 2);
+        x.fillRect(7, 6, 2, 6);
+    }
+
+    else if (type === "bow" || type === "arrow") {
+        x.fillStyle = "#a16a36";
+        x.fillRect(type === "bow" ? 3 : 7, 2, 2, 12);
+        if (type === "bow") {
+            x.fillRect(10, 3, 2, 10);
+            x.fillStyle = "#eee0c8";
+            x.fillRect(7, 2, 1, 12);
+        } else {
+            x.fillStyle = "#d8d8d8";
+            x.fillRect(6, 2, 4, 3);
+        }
+    }
+
+    else if (type === "flintlockPistol" || type === "flintlockRifle" || type === "musketBall") {
+        if (type === "musketBall") {
+            x.fillStyle = "#3a3a3a";
+            x.fillRect(5, 5, 6, 6);
+        } else {
+            x.fillStyle = "#4a2b19";
+            x.fillRect(3, type === "flintlockRifle" ? 8 : 9, 8, 4);
+            x.fillStyle = "#777c80";
+            x.fillRect(7, type === "flintlockRifle" ? 2 : 4, 2, type === "flintlockRifle" ? 8 : 6);
+            if (type === "flintlockRifle") x.fillRect(7, 2, 6, 2);
+        }
     }
 
     else if (
@@ -5943,9 +6353,35 @@ document.body.appendChild(
     craftingOverlay
 );
 
+function nearFurnace() {
+    if (!camera) {
+        return false;
+    }
+
+    const px = Math.round(camera.position.x);
+    const py = Math.round(camera.position.y - EYE_HEIGHT);
+    const pz = Math.round(camera.position.z);
+
+    for (let x = px - 3; x <= px + 3; x++) {
+        for (let y = py - 2; y <= py + 2; y++) {
+            for (let z = pz - 3; z <= pz + 3; z++) {
+                if (getBlock(x, y, z)?.type === "furnace") {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 function canCraft(
     recipe
 ) {
+    if (recipe.requiresFurnace && !nearFurnace()) {
+        return false;
+    }
+
     return Object.entries(
         recipe.input
     ).every(
@@ -6846,7 +7282,9 @@ function updateSurvivalHud() {
 
     paint(
         healthMeter,
-        health
+        health *
+        20 /
+        MAX_HEALTH
     );
 
     paint(
@@ -6874,8 +7312,10 @@ function updateSurvivalHud() {
 
     armorMeter.label.textContent =
         equippedArmor
-            ? `ARMOR ${nameOf(equippedArmor).toUpperCase()}`
-            : "ARMOR NONE";
+            ? `ARMOR ${nameOf(equippedArmor).toUpperCase()}${equippedShield ? " + SHIELD" : ""}`
+            : equippedShield
+                ? "ARMOR SHIELD"
+                : "ARMOR NONE";
 
     airMeter.label.textContent =
         `AIR ${Math.ceil(air)}`;
@@ -7492,6 +7932,71 @@ function equipSelectedArmor() {
     return true;
 }
 
+function equipSelectedShield() {
+    const type = selectedItem();
+
+    if (!isShield(type) || INVENTORY[type] <= 0) {
+        return false;
+    }
+
+    equippedShield = !equippedShield;
+    showLootToast(equippedShield ? "SHIELD EQUIPPED" : "SHIELD PUT AWAY");
+    updateSurvivalHud();
+    return true;
+}
+
+function targetEntityAtRange(range) {
+    const oldRange = raycaster.far;
+    raycaster.far = range;
+    const found = targetEntity();
+    raycaster.far = oldRange;
+    return found;
+}
+
+function fireRangedWeapon() {
+    const stats = rangedWeaponStats(selectedItem());
+
+    if (!stats) {
+        return false;
+    }
+
+    if (attackCooldown > 0) {
+        return true;
+    }
+
+    if (!removeItem(stats.ammo, 1)) {
+        showLootToast(`NEED ${nameOf(stats.ammo).toUpperCase()}`);
+        return true;
+    }
+
+    attackCooldown = stats.cooldown;
+    const target = targetEntityAtRange(stats.range);
+
+    if (!target) {
+        showLootToast(`${stats.sound}: MISSED`);
+        return true;
+    }
+
+    const e = target.entity;
+    e.health -= stats.damage;
+
+    if (!e.hostile) {
+        e.direction = Math.atan2(
+            e.group.position.x - camera.position.x,
+            e.group.position.z - camera.position.z
+        );
+        e.flee = 2.5;
+    }
+
+    showLootToast(`${stats.sound}: ${e.type.toUpperCase()} HIT`);
+
+    if (e.health <= 0) {
+        killEntity(e);
+    }
+
+    return true;
+}
+
 function toggleDoor(block) {
     const { x, y, z } = block;
 
@@ -7540,7 +8045,7 @@ const killedEntityIds =
 const MONSTER_TYPES =
     new Set([
         "mimic",
-        "rake",
+        "skinwalker",
         "rakeBoss",
         "shade",
         "crawler",
@@ -8479,15 +8984,32 @@ function buildAnimalModel(
     }
 
     // ========================================================
-    // SKINWALKER — a ragged, antlered night hunter (still uses the old "rake" spawn id).
+    // SKINWALKER — a ragged, antlered regular night hunter.
     // ========================================================
-    else if (
-        type ===
-        "rake"
-        ||
-        type ===
-        "rakeBoss"
-    ) {
+    else if (type === "rakeBoss") {
+        // The Rake is a separate pale arena boss now — not just a bigger
+        // Skinwalker. Its long arms are a warning before the fight starts.
+        part({ x: 0.48, y: 1.02, z: 0.32 }, 0xb8b6a8, { x: 0, y: 1.35, z: 0 });
+        part({ x: 0.46, y: 0.52, z: 0.38 }, 0xc9c5b5, { x: 0, y: 2.20, z: 0.02 });
+        part({ x: 0.16, y: 0.10, z: 0.03 }, 0xdc1826, { x: -0.13, y: 2.28, z: 0.23 });
+        part({ x: 0.16, y: 0.10, z: 0.03 }, 0xdc1826, { x: 0.13, y: 2.28, z: 0.23 });
+        part({ x: 0.30, y: 0.08, z: 0.03 }, 0x302425, { x: 0, y: 2.03, z: 0.23 });
+
+        for (const armX of [-0.40, 0.40]) {
+            part({ x: 0.13, y: 1.48, z: 0.14 }, 0xa7a596, { x: armX, y: 1.18, z: 0 });
+            for (const fingerZ of [-0.07, 0, 0.07]) {
+                part({ x: 0.025, y: 0.28, z: 0.025 }, 0x1a1717, { x: armX, y: 0.34, z: fingerZ });
+            }
+        }
+
+        for (const legX of [-0.15, 0.15]) {
+            part({ x: 0.17, y: 1.22, z: 0.18 }, 0x969487, { x: legX, y: 0.54, z: 0 });
+        }
+
+        g.scale.setScalar(1.34);
+    }
+
+    else if (type === "skinwalker") {
         part(
             {
                 x: 0.56,
@@ -8740,10 +9262,6 @@ function buildAnimalModel(
             }
         );
 
-        if (type === "rakeBoss") {
-            // A bigger silhouette makes the lair encounter instantly readable.
-            g.scale.setScalar(1.48);
-        }
     }
 
     return g;
@@ -8758,7 +9276,7 @@ function entityStats(
     ) {
         return {
             health:
-                5,
+                10,
 
             speed:
                 0.75
@@ -8771,7 +9289,7 @@ function entityStats(
     ) {
         return {
             health:
-                4,
+                8,
 
             speed:
                 0.9
@@ -8784,7 +9302,7 @@ function entityStats(
     ) {
         return {
             health:
-                4,
+                8,
 
             speed:
                 0.7
@@ -8792,15 +9310,15 @@ function entityStats(
     }
 
     if (type === "deer") {
-        return { health: 5, speed: 1.25 };
+        return { health: 10, speed: 1.25 };
     }
 
     if (type === "boar") {
-        return { health: 7, speed: 1.05 };
+        return { health: 14, speed: 1.05 };
     }
 
     if (type === "chicken") {
-        return { health: 2, speed: 0.72 };
+        return { health: 4, speed: 0.72 };
     }
 
     if (
@@ -8809,7 +9327,7 @@ function entityStats(
     ) {
         return {
             health:
-                8,
+                18,
 
             speed:
                 1.45,
@@ -8821,11 +9339,11 @@ function entityStats(
 
     if (
         type ===
-        "rake"
+        "skinwalker"
     ) {
         return {
             health:
-                12,
+                26,
 
             speed:
                 1.55,
@@ -8840,7 +9358,7 @@ function entityStats(
         "rakeBoss"
     ) {
         return {
-            health: 60,
+            health: 120,
             speed: 1.15,
             attack: 3.8
         };
@@ -8852,7 +9370,7 @@ function entityStats(
     ) {
         return {
             health:
-                6,
+                14,
 
             speed:
                 1.7,
@@ -8868,7 +9386,7 @@ function entityStats(
     ) {
         return {
             health:
-                18,
+                36,
 
             speed:
                 0.95,
@@ -8879,11 +9397,15 @@ function entityStats(
     }
 
     if (type === "wraith") {
-        return { health: 9, speed: 1.65, attack: 2.5 };
+        return { health: 20, speed: 1.65, attack: 2.5 };
     }
 
     if (type === "trader") {
-        return { health: 14, speed: 0.26 };
+        return { health: 24, speed: 0.26 };
+    }
+
+    if (type === "mimic") {
+        return { health: 30, speed: 1.45, attack: 2.4 };
     }
 
     return {
@@ -9314,30 +9836,37 @@ function spawnEntityForChunk(
 function spawnTraderForChunk(
     chunk
 ) {
-    if (!structureForChunk(chunk.cx, chunk.cz)) {
+    const structure = structureForChunk(chunk.cx, chunk.cz);
+
+    if (!structure) {
         return;
     }
 
     const center = structureCenter(chunk.cx, chunk.cz);
-    // Four blocks out is beside every structure, but still inside the tree-free
-    // structure clearing, so the trader never materializes inside leaves.
-    const x = center.x + 4;
-    const z = center.z + 4;
+    const traderSpots = structure === "village"
+        ? [[-5, 0], [0, 6], [5, 0]]
+        : [[4, 4]];
 
-    spawnEntityForChunk(
-        chunk,
-        "trader",
-        "trader",
-        3611,
-        {
-            minimumPlayerDistance: 2,
-            position: {
-                x,
-                y: terrainHeight(Math.round(x), Math.round(z)) + 0.5,
-                z
+    for (let i = 0; i < traderSpots.length; i++) {
+        const [dx, dz] = traderSpots[i];
+        const x = center.x + dx;
+        const z = center.z + dz;
+
+        spawnEntityForChunk(
+            chunk,
+            "trader",
+            `trader:${i}`,
+            3611 + i,
+            {
+                minimumPlayerDistance: 2,
+                position: {
+                    x,
+                    y: terrainHeight(Math.round(x), Math.round(z)) + 0.5,
+                    z
+                }
             }
-        }
-    );
+        );
+    }
 }
 
 function spawnMonsterForChunk(
@@ -9417,7 +9946,7 @@ function spawnMonsterForChunk(
             ? "mimic"
             : r <
             0.36
-                ? "rake"
+                ? "skinwalker"
                 : r <
             0.53
                     ? "shade"
@@ -9475,18 +10004,14 @@ function spawnRakeBossForChunk(chunk) {
         return;
     }
 
-    const bossForward = 18;
+    // The Rake appears inside the broad chamber itself: a small torch-lit
+    // arena instead of a surprise squeeze through a one-block tunnel.
+    const bossForward = 13;
     const bossZ =
         entrance.z +
         bossForward;
 
-    const bossX =
-        entrance.x + Math.round(
-            Math.sin(
-                (bossForward - 12) * 0.65 +
-                entrance.x * 0.11
-            )
-        );
+    const bossX = entrance.x + 3;
 
     const bossFloor =
         caveFloorAt(
@@ -9819,10 +10344,17 @@ function killEntity(
     else if (
         e.boss
     ) {
-        addItem("diamond", 2);
-        addItem("gold", 5);
-        addItem("iron", 8);
-        showLootToast("THE SKINWALKER FALLS — BOSS LOOT CLAIMED");
+        addItem("diamond", 4);
+        addItem("gold", 8);
+        addItem("iron", 14);
+        addItem("crystal", 3);
+
+        if (Math.random() < 0.35) {
+            addItem("diamondArmor", 1);
+            showLootToast("THE RAKE FALLS — RARE DIAMOND ARMOR DROP!");
+        } else {
+            showLootToast("THE RAKE FALLS — RARE BOSS LOOT CLAIMED");
+        }
     }
 
     else {
@@ -9839,6 +10371,11 @@ function killEntity(
                 "iron",
                 1
             );
+        }
+
+        if (Math.random() < 0.08) {
+            addItem("crystal", 1);
+            showLootToast("RARE CAVE CRYSTAL DROPPED");
         }
     }
 
@@ -10387,7 +10924,10 @@ function updateEntities(
             moved = true;
         }
 
-        else {
+        else if (speed > 0.02) {
+            // A stationary NPC used to hit this fallback every frame and spin
+            // like crazy. Only creatures that were actually trying to walk
+            // should pick a new direction.
             e.direction +=
                 Math.PI *
                 (
@@ -11005,15 +11545,21 @@ function respawnPlayer() {
             z
         );
 
-    camera.position.set(
-        x,
+    if (!loadGame()) {
+        camera.position.set(
+            x,
 
-        y +
-        0.5 +
-        EYE_HEIGHT,
+            y +
+            0.5 +
+            EYE_HEIGHT,
 
-        z
-    );
+            z
+        );
+    }
+
+    updateHotbar();
+    updateCraftingMenu();
+    updateSurvivalHud();
 
     verticalVelocity =
         0;
@@ -11169,7 +11715,8 @@ function miningTime(
             "coalOre",
             "ironOre",
             "goldOre",
-            "diamondOre"
+            "diamondOre",
+            "crystalOre"
         ].includes(
             blockType
         )
@@ -11219,14 +11766,14 @@ function blockDrop(
         type ===
         "ironOre"
     ) {
-        return "iron";
+        return "rawIron";
     }
 
     if (
         type ===
         "goldOre"
     ) {
-        return "gold";
+        return "rawGold";
     }
 
     if (
@@ -11234,6 +11781,10 @@ function blockDrop(
         "diamondOre"
     ) {
         return "diamond";
+    }
+
+    if (type === "crystalOre") {
+        return "crystal";
     }
 
     return type;
@@ -11253,6 +11804,9 @@ function canHarvest(
         ||
         type ===
         "goldOre"
+        ||
+        type ===
+        "crystalOre"
     ) {
         return tier >=
             2;
@@ -11856,6 +12410,12 @@ function setupControls() {
                     return;
                 }
 
+                if (blockTarget?.block.type === "furnace") {
+                    showLootToast("FURNACE: STAND CLOSE, PRESS E, THEN SMELT");
+
+                    return;
+                }
+
                 if (
                     blockTarget?.block.type === "door"
                     ||
@@ -11869,6 +12429,10 @@ function setupControls() {
                 }
 
                 if (
+                    !fireRangedWeapon()
+                    &&
+                    !equipSelectedShield()
+                    &&
                     !equipSelectedArmor()
                     &&
                     !eatSelectedFood()
@@ -12201,6 +12765,13 @@ function animate() {
         delta
     );
 
+    saveTimer += delta;
+
+    if (saveTimer >= 12) {
+        saveTimer = 0;
+        saveGame();
+    }
+
     renderer.render(
         scene,
         camera
@@ -12231,3 +12802,5 @@ addEventListener(
         );
     }
 );
+
+addEventListener("beforeunload", saveGame);
