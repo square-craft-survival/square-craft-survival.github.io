@@ -1234,41 +1234,43 @@ function insideEntrance(
                 continue;
             }
 
-            const dist =
-                Math.hypot(
-                    x -
-                    e.x,
-
-                    z -
-                    e.z
-                );
+            // A three-block-wide, descending tunnel. The stone floor for each
+            // step is placed separately below, so this only opens the headroom.
+            const forward = z - e.z;
+            const sideways = Math.abs(x - e.x);
+            const stairDepth = 7;
 
             if (
-                dist <
-                1.45
+                forward >= 0
                 &&
-                y <=
-                e.ground +
-                1
+                forward <= stairDepth
                 &&
-                y >=
-                e.ground -
-                7
+                sideways <= 1
             ) {
-                return true;
+                const stairFloor =
+                    e.ground - Math.floor(forward);
+
+                if (
+                    y > stairFloor
+                    &&
+                    y <= stairFloor + 3
+                ) {
+                    return true;
+                }
             }
 
+            // A small room at the bottom joins the normal underground caves.
+            const chamberDistance = Math.hypot(
+                x - e.x,
+                z - (e.z + stairDepth)
+            );
+
             if (
-                dist <
-                2.3
+                chamberDistance < 2.25
                 &&
-                y <=
-                e.ground -
-                4
+                y <= e.ground - stairDepth + 1
                 &&
-                y >=
-                e.ground -
-                8
+                y >= e.ground - stairDepth - 4
             ) {
                 return true;
             }
@@ -1276,6 +1278,34 @@ function insideEntrance(
     }
 
     return false;
+}
+
+function caveStairBlocks(
+    cx,
+    cz
+) {
+    const entrance =
+        caveEntranceForChunk(cx, cz);
+
+    if (!entrance) {
+        return [];
+    }
+
+    const stairs = [];
+    const stairDepth = 7;
+
+    for (let step = 0; step <= stairDepth; step++) {
+        for (let side = -1; side <= 1; side++) {
+            stairs.push({
+                x: entrance.x + side,
+                y: entrance.ground - step,
+                z: entrance.z + step,
+                type: "stone"
+            });
+        }
+    }
+
+    return stairs;
 }
 
 function shouldCarveCave(
@@ -2238,6 +2268,22 @@ function generateChunkBlocks(
                                 )
                     );
                 }
+            }
+        }
+    }
+
+    // Put a solid stone floor under every carved tunnel step. Scan nearby
+    // entrance chunks too so stairs stay seamless across a chunk edge.
+    for (let entranceCx = cx - 1; entranceCx <= cx + 1; entranceCx++) {
+        for (let entranceCz = cz - 1; entranceCz <= cz + 1; entranceCz++) {
+            for (const stair of caveStairBlocks(entranceCx, entranceCz)) {
+                put(
+                    stair.x,
+                    stair.y,
+                    stair.z,
+                    stair.type,
+                    true
+                );
             }
         }
     }
@@ -5886,6 +5932,7 @@ const killedEntityIds =
 const MONSTER_TYPES =
     new Set([
         "mimic",
+        "rake",
         "shade",
         "crawler",
         "brute"
@@ -6663,73 +6710,104 @@ function buildAnimalModel(
     }
 
     // ========================================================
-    // MIMIC
+    // MIMIC — tall black watcher with white eyes and chest stripes
+    // ========================================================
+    else if (type === "mimic") {
+        const mimicBlack = 0x09090b;
+        const mimicCharcoal = 0x1a1a20;
+        const mimicWhite = 0xf1eee0;
+        const mimicRed = 0xbd2429;
+
+        part({ x: 0.42, y: 0.92, z: 0.28 }, mimicBlack, { x: 0, y: 1.38, z: 0 });
+        part({ x: 0.34, y: 0.46, z: 0.32 }, mimicCharcoal, { x: 0, y: 2.08, z: 0.02 });
+
+        for (const eyeX of [-0.09, 0.09]) {
+            part({ x: 0.055, y: 0.075, z: 0.025 }, mimicWhite, { x: eyeX, y: 2.14, z: 0.195 });
+        }
+
+        for (const stripeX of [-0.12, 0, 0.12]) {
+            part({ x: 0.04, y: 0.35, z: 0.025 }, mimicRed, { x: stripeX, y: 1.40, z: 0.16 });
+            part({ x: 0.018, y: 0.15, z: 0.03 }, mimicWhite, { x: stripeX, y: 1.37, z: 0.175 });
+        }
+
+        for (const armX of [-0.34, 0.34]) {
+            part({ x: 0.09, y: 1.50, z: 0.09 }, mimicBlack, { x: armX, y: 1.18, z: 0 });
+            part({ x: 0.14, y: 0.22, z: 0.13 }, mimicCharcoal, { x: armX, y: 0.36, z: 0.02 });
+        }
+
+        for (const legX of [-0.12, 0.12]) {
+            part({ x: 0.11, y: 1.36, z: 0.11 }, mimicBlack, { x: legX, y: 0.52, z: 0 });
+        }
+    }
+
+    // ========================================================
+    // RAKE — pale, lanky cave hunter
     // ========================================================
     else if (
         type ===
-        "mimic"
+        "rake"
     ) {
         part(
             {
-                x: 0.60,
-                y: 0.80,
-                z: 0.40
+                x: 0.34,
+                y: 0.92,
+                z: 0.22
             },
 
-            0x181513,
+            0xcac6ba,
 
             {
                 x: 0,
-                y: 1.15,
+                y: 1.36,
                 z: 0
-            }
-        );
-
-        part(
-            {
-                x: 0.46,
-                y: 0.46,
-                z: 0.42
-            },
-
-            0x27211e,
-
-            {
-                x: 0,
-                y: 1.78,
-                z: 0
-            }
-        );
-
-        part(
-            {
-                x: 0.30,
-                y: 0.18,
-                z: 0.04
-            },
-
-            0x201b18,
-
-            {
-                x: 0,
-                y: 1.78,
-                z: 0.23
             }
         );
 
         part(
             {
                 x: 0.28,
-                y: 0.06,
-                z: 0.025
+                y: 0.40,
+                z: 0.26
             },
 
-            0x0d0b0a,
+            0xded9ce,
 
             {
                 x: 0,
-                y: 1.68,
-                z: 0.255
+                y: 2.00,
+                z: 0.02
+            }
+        );
+
+        part(
+            {
+                x: 0.16,
+                y: 0.11,
+                z: 0.025
+            },
+
+            0x151515,
+
+            {
+                x: 0,
+                y: 1.96,
+                z: 0.155
+            }
+        );
+
+        part(
+            {
+                x: 0.18,
+                y: 0.04,
+                z: 0.025
+            },
+
+            0x252525,
+
+            {
+                x: 0,
+                y: 1.89,
+                z: 0.16
             }
         );
 
@@ -6740,12 +6818,12 @@ function buildAnimalModel(
                 z: 0.025
             },
 
-            0xc40000,
+            0x121212,
 
             {
                 x: -0.09,
-                y: 1.85,
-                z: 0.235
+                y: 2.07,
+                z: 0.15
             }
         );
 
@@ -6756,108 +6834,108 @@ function buildAnimalModel(
                 z: 0.025
             },
 
-            0xc40000,
+            0x121212,
 
             {
                 x: 0.09,
-                y: 1.85,
-                z: 0.235
+                y: 2.07,
+                z: 0.15
             }
         );
 
         part(
             {
-                x: 0.11,
-                y: 0.92,
-                z: 0.11
+                x: 0.085,
+                y: 1.42,
+                z: 0.085
             },
 
-            0x11100f,
+            0xaaa79e,
 
             {
-                x: -0.43,
-                y: 1.08,
+                x: -0.29,
+                y: 1.18,
                 z: 0.02
             }
         );
 
         part(
             {
-                x: 0.11,
-                y: 0.92,
-                z: 0.11
+                x: 0.085,
+                y: 1.42,
+                z: 0.085
             },
 
-            0x11100f,
+            0xaaa79e,
 
             {
-                x: 0.43,
-                y: 1.08,
+                x: 0.29,
+                y: 1.18,
                 z: 0.02
             }
         );
 
         part(
             {
-                x: 0.13,
-                y: 0.14,
-                z: 0.16
+                x: 0.10,
+                y: 0.18,
+                z: 0.10
             },
 
-            0x080808,
+            0xd5d1c8,
 
             {
-                x: -0.43,
-                y: 0.57,
-                z: 0.09
+                x: -0.29,
+                y: 0.38,
+                z: 0.02
             }
         );
 
         part(
             {
-                x: 0.13,
-                y: 0.14,
-                z: 0.16
+                x: 0.10,
+                y: 0.18,
+                z: 0.10
             },
 
-            0x080808,
+            0xd5d1c8,
 
             {
-                x: 0.43,
-                y: 0.57,
-                z: 0.09
+                x: 0.29,
+                y: 0.38,
+                z: 0.02
             }
         );
 
         part(
             {
-                x: 0.13,
-                y: 1.08,
-                z: 0.13
+                x: 0.10,
+                y: 1.28,
+                z: 0.10
             },
 
-            0x0d0c0b,
+            0xb9b5ad,
 
             {
-                x: -0.17,
-                y: 0.54,
-                z: -0.02
+                x: -0.11,
+                y: 0.50,
+                z: 0
             }
         );
 
         part(
             {
-                x: 0.13,
-                y: 1.08,
-                z: 0.13
+                x: 0.10,
+                y: 1.28,
+                z: 0.10
             },
 
-            0x0d0c0b,
+            0xb9b5ad,
 
             {
-                x: 0.17,
-                y: 0.54,
-                z: -0.02
+                x: 0.11,
+                y: 0.50,
+                z: 0
             }
         );
     }
@@ -6920,6 +6998,22 @@ function entityStats(
 
             attack:
                 2
+        };
+    }
+
+    if (
+        type ===
+        "rake"
+    ) {
+        return {
+            health:
+                12,
+
+            speed:
+                1.55,
+
+            attack:
+                3
         };
     }
 
@@ -7383,13 +7477,16 @@ function spawnMonsterForChunk(
 
     const type =
         r <
-        0.30
+        0.22
             ? "mimic"
             : r <
-            0.58
+            0.43
+                ? "rake"
+                : r <
+            0.64
                 ? "shade"
                 : r <
-                0.82
+                0.84
                     ? "crawler"
                     : "brute";
 
