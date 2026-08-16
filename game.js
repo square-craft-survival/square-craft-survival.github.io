@@ -288,7 +288,7 @@ const BEDROCK_Y = -12;
 const MAX_BUILD_Y = 64;
 const SEA_LEVEL = 4;
 const BIOME_SIZE = 64;
-const SWAMP_WATER_Y = 6;
+const SWAMP_WATER_Y = 5;
 
 const loadedChunks = new Map();
 const chunkEdits = new Map();
@@ -948,6 +948,11 @@ function waterSurfaceAt(
             blockZ
         )
         ||
+        nearCaveEntrance(
+            blockX,
+            blockZ
+        )
+        ||
         terrainHeight(
             blockX,
             blockZ
@@ -1275,6 +1280,49 @@ function caveEntranceForChunk(
                 z
             )
     };
+}
+
+function nearCaveEntrance(
+    x,
+    z
+) {
+    const cx = chunkOf(x);
+    const cz = chunkOf(z);
+
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+            const entrance = caveEntranceForChunk(
+                cx + dx,
+                cz + dz
+            );
+
+            if (!entrance) {
+                continue;
+            }
+
+            const forward = z - entrance.z;
+
+            // Covers the slope, chamber, and the end of the walkable tunnel.
+            if (
+                forward >= -4
+                && forward <= 22
+                && Math.abs(x - entrance.x) <= 4
+            ) {
+                return true;
+            }
+
+            if (
+                Math.hypot(
+                    x - entrance.x,
+                    z - (entrance.z + 13)
+                ) < 5
+            ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 function insideEntrance(
@@ -6139,6 +6187,16 @@ function addEntityPart(
         pos.z
     );
 
+    if (
+        pos.rotation
+    ) {
+        mesh.rotation.set(
+            pos.rotation.x || 0,
+            pos.rotation.y || 0,
+            pos.rotation.z || 0
+        );
+    }
+
     mesh.userData.entityId =
         entityId;
 
@@ -6924,56 +6982,25 @@ function buildAnimalModel(
 
         part(
             {
-                x: 0.46,
-                y: 0.58,
-                z: 0.38
+                x: 0.40,
+                y: 0.62,
+                z: 0.34
             },
 
             0xe6e2d7,
 
             {
-                x: 0,
-                y: 2.12,
-                z: 0.02
-            }
-        );
-
-        part(
-            {
-                x: 0.30,
-                y: 0.18,
-                z: 0.025
-            },
-
-            0x151515,
-
-            {
-                x: 0,
+                x: 0.04,
                 y: 2.13,
-                z: 0.22
+                z: 0.02,
+                rotation: { z: 0.14 }
             }
         );
 
         part(
             {
-                x: 0.12,
-                y: 0.035,
-                z: 0.025
-            },
-
-            0x252525,
-
-            {
-                x: 0,
-                y: 2.00,
-                z: 0.225
-            }
-        );
-
-        part(
-            {
-                x: 0.055,
-                y: 0.055,
+                x: 0.035,
+                y: 0.09,
                 z: 0.025
             },
 
@@ -6981,15 +7008,15 @@ function buildAnimalModel(
 
             {
                 x: -0.09,
-                y: 2.23,
-                z: 0.225
+                y: 2.26,
+                z: 0.20
             }
         );
 
         part(
             {
-                x: 0.055,
-                y: 0.055,
+                x: 0.035,
+                y: 0.09,
                 z: 0.025
             },
 
@@ -6997,8 +7024,8 @@ function buildAnimalModel(
 
             {
                 x: 0.09,
-                y: 2.23,
-                z: 0.225
+                y: 2.26,
+                z: 0.20
             }
         );
 
