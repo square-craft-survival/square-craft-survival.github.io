@@ -169,6 +169,57 @@ const damageFlash = css(document.createElement("div"), {
 
 document.body.appendChild(damageFlash);
 
+const gameOverOverlay = css(document.createElement("div"), {
+    position: "fixed",
+    inset: "0",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(8, 0, 0, .82)",
+    zIndex: "1200",
+    color: "white",
+    fontFamily: "system-ui, sans-serif",
+    textAlign: "center"
+});
+
+const gameOverPanel = css(document.createElement("div"), {
+    width: "min(460px, 86vw)",
+    padding: "34px",
+    background: "#231313",
+    border: "5px solid #6e2727",
+    boxShadow: "0 16px 50px rgba(0,0,0,.65)"
+});
+
+const gameOverTitle = css(document.createElement("div"), {
+    fontSize: "42px",
+    fontWeight: "900",
+    letterSpacing: "2px",
+    color: "#ff6b5e",
+    textShadow: "3px 3px #000"
+});
+
+gameOverTitle.textContent = "GAME OVER";
+
+const gameOverText = css(document.createElement("div"), {
+    margin: "13px 0 24px",
+    color: "#e5caca",
+    fontSize: "17px"
+});
+
+const respawnButton = css(document.createElement("button"), {
+    padding: "13px 30px",
+    color: "white",
+    background: "#8f3731",
+    border: "4px solid #150909",
+    font: "bold 18px system-ui, sans-serif",
+    cursor: "pointer"
+});
+
+respawnButton.textContent = "RESPAWN";
+gameOverPanel.append(gameOverTitle, gameOverText, respawnButton);
+gameOverOverlay.appendChild(gameOverPanel);
+document.body.appendChild(gameOverOverlay);
+
 // ============================================================
 // GAME STATE
 // ============================================================
@@ -191,6 +242,7 @@ let pitch = 0;
 let verticalVelocity = 0;
 let onGround = false;
 let craftingOpen = false;
+let gameOver = false;
 
 const MOVE_SPEED = 7;
 const GRAVITY = 20;
@@ -221,6 +273,8 @@ const FOG_FAR = 62;
 
 const BEDROCK_Y = -12;
 const MAX_BUILD_Y = 64;
+const SEA_LEVEL = 4;
+const BIOME_SIZE = 64;
 
 const loadedChunks = new Map();
 const chunkEdits = new Map();
@@ -246,6 +300,7 @@ const BLOCKS = [
     "clay",
     "sandstone",
     "brick",
+    "water",
     "wood",
     "leaves",
     "stone",
@@ -675,6 +730,76 @@ const chunkOf =
             CHUNK_SIZE
         );
 
+function biomeAt(
+    x,
+    z
+) {
+    // Keeping the spawn area familiar prevents a rough first spawn, then large
+    // deterministic cells turn the surrounding world into recognizable biomes.
+    if (
+        Math.hypot(
+            x,
+            z -
+            8
+        ) <
+        46
+    ) {
+        return "plains";
+    }
+
+    const r =
+        hash2(
+            Math.floor(
+                x /
+                BIOME_SIZE
+            ),
+
+            Math.floor(
+                z /
+                BIOME_SIZE
+            ),
+
+            1701
+        );
+
+    if (
+        r <
+        0.16
+    ) {
+        return "ocean";
+    }
+
+    if (
+        r <
+        0.34
+    ) {
+        return "desert";
+    }
+
+    if (
+        r <
+        0.49
+    ) {
+        return "swamp";
+    }
+
+    if (
+        r <
+        0.66
+    ) {
+        return "redwoodForest";
+    }
+
+    if (
+        r <
+        0.82
+    ) {
+        return "blackForest";
+    }
+
+    return "plains";
+}
+
 function terrainHeight(
     x,
     z
@@ -730,59 +855,78 @@ function terrainHeight(
         ) *
         0.75;
 
+    const biome =
+        biomeAt(
+            x,
+            z
+        );
+
+    const base =
+        biome ===
+        "ocean"
+            ? 1
+            : biome ===
+            "swamp"
+                ? 4
+                : biome ===
+                "desert"
+                    ? 7
+                    : 6;
+
+    const variation =
+        biome ===
+        "ocean"
+            ? broad *
+            0.28 +
+            ridges *
+            0.18
+            : broad +
+            ridges +
+            bumps;
+
     return clamp(
         Math.floor(
-            6 +
-            broad +
-            ridges +
-            bumps
+            base +
+            variation
         ),
 
-        1,
+        0,
         15
     );
 }
 
-// A few wide patches make the world less same-y without changing the terrain
-// height, cave layout, structures, or chunk edit behavior.
 function surfaceBlockAt(
     x,
     z
 ) {
-    const patch =
-        hash2(
-            Math.floor(
-                x /
-                5
-            ),
-
-            Math.floor(
-                z /
-                5
-            ),
-
-            909
+    const biome =
+        biomeAt(
+            x,
+            z
         );
 
     if (
-        patch <
-        0.11
+        biome ===
+        "ocean"
+        ||
+        biome ===
+        "desert"
     ) {
         return "sand";
     }
 
     if (
-        patch <
-        0.16
+        biome ===
+        "swamp"
     ) {
-        return "gravel";
-    }
-
-    if (
-        patch <
-        0.19
-    ) {
-        return "clay";
+        return hash2(
+            x,
+            z,
+            909
+        ) <
+        0.55
+            ? "clay"
+            : "grass";
     }
 
     return "grass";
@@ -840,6 +984,21 @@ function structureForChunk(
     cx,
     cz
 ) {
+    if (
+        biomeAt(
+            cx *
+            CHUNK_SIZE +
+            8,
+
+            cz *
+            CHUNK_SIZE +
+            8
+        ) ===
+        "ocean"
+    ) {
+        return null;
+    }
+
     if (
         Math.abs(cx) <= 1
         &&
@@ -1226,6 +1385,25 @@ function treeCanSpawn(
     x,
     z
 ) {
+    const biome =
+        biomeAt(
+            x,
+            z
+        );
+
+    if (
+        biome ===
+        "ocean"
+        ||
+        biome ===
+        "desert"
+        ||
+        biome ===
+        "swamp"
+    ) {
+        return false;
+    }
+
     if (
         Math.hypot(
             x,
@@ -1242,13 +1420,22 @@ function treeCanSpawn(
         return false;
     }
 
+    const treeChance =
+        biome ===
+        "redwoodForest"
+            ? 0.062
+            : biome ===
+            "blackForest"
+                ? 0.052
+                : 0.018;
+
     if (
         hash2(
             x,
             z,
             12
         ) >
-        0.028
+        treeChance
     ) {
         return false;
     }
@@ -1319,15 +1506,52 @@ function treeBlocks(
             z
         );
 
-    const height =
-        hash2(
+    const biome =
+        biomeAt(
             x,
-            z,
-            13
-        ) >
-        0.5
-            ? 5
-            : 4;
+            z
+        );
+
+    const height =
+        biome ===
+        "redwoodForest"
+            ? 9 +
+            Math.floor(
+                hash2(
+                    x,
+                    z,
+                    13
+                ) *
+                4
+            )
+            : biome ===
+            "blackForest"
+                ? 6 +
+                Math.floor(
+                    hash2(
+                        x,
+                        z,
+                        13
+                    ) *
+                    3
+                )
+                : hash2(
+                    x,
+                    z,
+                    13
+                ) >
+                0.5
+                    ? 5
+                    : 4;
+
+    const canopyRadius =
+        biome ===
+        "redwoodForest"
+        ||
+        biome ===
+        "blackForest"
+            ? 3
+            : 2;
 
     const out = [];
 
@@ -1360,19 +1584,25 @@ function treeBlocks(
         yy++
     ) {
         for (
-            let dx = -2;
-            dx <= 2;
+        let dx =
+            -canopyRadius;
+        dx <=
+        canopyRadius;
             dx++
         ) {
             for (
-                let dz = -2;
-                dz <= 2;
+            let dz =
+                -canopyRadius;
+            dz <=
+            canopyRadius;
                 dz++
             ) {
                 if (
-                    Math.abs(dx) === 2
+                    Math.abs(dx) ===
+                    canopyRadius
                     &&
-                    Math.abs(dz) === 2
+                    Math.abs(dz) ===
+                    canopyRadius
                 ) {
                     continue;
                 }
@@ -1975,25 +2205,93 @@ function generateChunkBlocks(
         }
     }
 
+    // Water is rendered separately from collision, so oceans and swamp pools
+    // look like water while the existing terrain/cave physics stay stable.
+    for (
+        let x = minX;
+        x <= maxX;
+        x++
+    ) {
+        for (
+            let z = minZ;
+            z <= maxZ;
+            z++
+        ) {
+            const biome =
+                biomeAt(
+                    x,
+                    z
+                );
+
+            const surface =
+                terrainHeight(
+                    x,
+                    z
+                );
+
+            const waterTop =
+                biome ===
+                "ocean"
+                    ? SEA_LEVEL
+                    : biome ===
+                    "swamp"
+                    &&
+                    hash2(
+                        x,
+                        z,
+                        1710
+                    ) <
+                    0.22
+                        ? surface +
+                        1
+                        : null;
+
+            if (
+                waterTop ===
+                null
+            ) {
+                continue;
+            }
+
+            for (
+                let y =
+                    surface +
+                    1;
+
+                y <=
+                waterTop;
+
+                y++
+            ) {
+                put(
+                    x,
+                    y,
+                    z,
+                    "water"
+                );
+            }
+        }
+    }
+
     for (
         let tx =
             minX -
-            2;
+            3;
 
         tx <=
             maxX +
-            2;
+            3;
 
         tx++
     ) {
         for (
             let tz =
                 minZ -
-                2;
+                3;
 
             tz <=
                 maxZ +
-                2;
+                3;
 
             tz++
         ) {
@@ -2725,6 +3023,21 @@ function createMaterials() {
                 )
         });
 
+    materials.water =
+        new THREE.MeshLambertMaterial({
+            color:
+                0x2879b9,
+
+            transparent:
+                true,
+
+            opacity:
+                0.62,
+
+            depthWrite:
+                false
+        });
+
     materials.wood = [
         woodSide,
         woodSide,
@@ -3007,9 +3320,14 @@ function rebuildChunk(
             mesh
         );
 
-        interactiveMeshes.add(
-            mesh
-        );
+        if (
+            type !==
+            "water"
+        ) {
+            interactiveMeshes.add(
+                mesh
+            );
+        }
 
         chunk.meshes.push(
             mesh
@@ -3351,6 +3669,25 @@ const blockExists =
             y,
             z
         );
+
+const solidBlockExists =
+    (
+        x,
+        y,
+        z
+    ) => {
+        const block =
+            getBlock(
+                x,
+                y,
+                z
+            );
+
+        return !!block
+            &&
+            block.type !==
+            "water";
+    };
 
 function removeBlock(
     x,
@@ -5127,6 +5464,68 @@ function updateSurvivalHud() {
         `HUNGER ${hunger}`;
 }
 
+function showGameOver(
+    reason =
+        "The night claimed another survivor."
+) {
+    if (
+        gameOver
+    ) {
+        return;
+    }
+
+    gameOver =
+        true;
+
+    craftingOpen =
+        false;
+
+    craftingOverlay.style.display =
+        "none";
+
+    miningHeld =
+        false;
+
+    resetMining();
+
+    if (
+        document.pointerLockElement
+    ) {
+        document.exitPointerLock();
+    }
+
+    gameOverText.textContent =
+        reason;
+
+    gameOverOverlay.style.display =
+        "flex";
+}
+
+function respawnFromGameOver() {
+    health =
+        MAX_HEALTH;
+
+    hunger =
+        MAX_HUNGER;
+
+    verticalVelocity =
+        0;
+
+    gameOver =
+        false;
+
+    gameOverOverlay.style.display =
+        "none";
+
+    updateSurvivalHud();
+    respawnPlayer();
+}
+
+respawnButton.addEventListener(
+    "click",
+    respawnFromGameOver
+);
+
 function takeDamage(
     amount
 ) {
@@ -5156,15 +5555,7 @@ function takeDamage(
         health <=
         0
     ) {
-        respawnPlayer();
-
-        health =
-            MAX_HEALTH;
-
-        hunger =
-            MAX_HUNGER;
-
-        updateSurvivalHud();
+        showGameOver();
     }
 }
 
@@ -5172,6 +5563,8 @@ function updateSurvival(
     delta
 ) {
     if (
+        gameOver
+        ||
         craftingOpen
     ) {
         return;
@@ -5312,6 +5705,17 @@ const entityHitMeshes =
 
 const killedEntityIds =
     new Set();
+
+const MONSTER_TYPES =
+    new Set([
+        "mimic",
+        "shade",
+        "crawler",
+        "brute"
+    ]);
+
+let monsterSpawnTimer =
+    0;
 
 const entityMaterialCache =
     new Map();
@@ -5863,6 +6267,225 @@ function buildAnimalModel(
     }
 
     // ========================================================
+    // NIGHT MONSTERS
+    // ========================================================
+    else if (
+        type ===
+        "shade"
+        ||
+        type ===
+        "brute"
+    ) {
+        const brute =
+            type ===
+            "brute";
+
+        const bodyColor =
+            brute
+                ? 0x6e2727
+                : 0x222437;
+
+        const headColor =
+            brute
+                ? 0x9e3932
+                : 0x383b59;
+
+        part(
+            {
+                x: brute ? 0.82 : 0.58,
+                y: brute ? 0.98 : 0.80,
+                z: brute ? 0.50 : 0.38
+            },
+
+            bodyColor,
+
+            {
+                x: 0,
+                y: brute ? 1.16 : 1.08,
+                z: 0
+            }
+        );
+
+        part(
+            {
+                x: brute ? 0.62 : 0.44,
+                y: brute ? 0.60 : 0.46,
+                z: brute ? 0.54 : 0.42
+            },
+
+            headColor,
+
+            {
+                x: 0,
+                y: brute ? 1.92 : 1.70,
+                z: 0.02
+            }
+        );
+
+        for (
+            const x
+            of [
+                -0.12,
+                0.12
+            ]
+        ) {
+            part(
+                {
+                    x: 0.065,
+                    y: 0.065,
+                    z: 0.03
+                },
+
+                brute ? 0xffbe2f : 0x82e9ff,
+
+                {
+                    x,
+                    y: brute ? 2.00 : 1.77,
+                    z: brute ? 0.30 : 0.25
+                }
+            );
+        }
+
+        for (
+            const x
+            of [
+                brute ? -0.54 : -0.38,
+                brute ? 0.54 : 0.38
+            ]
+        ) {
+            part(
+                {
+                    x: brute ? 0.18 : 0.12,
+                    y: brute ? 0.82 : 0.70,
+                    z: brute ? 0.18 : 0.12
+                },
+
+                bodyColor,
+
+                {
+                    x,
+                    y: brute ? 1.14 : 1.05,
+                    z: 0
+                }
+            );
+        }
+
+        for (
+            const x
+            of [
+                brute ? -0.22 : -0.15,
+                brute ? 0.22 : 0.15
+            ]
+        ) {
+            part(
+                {
+                    x: brute ? 0.20 : 0.14,
+                    y: brute ? 0.82 : 0.72,
+                    z: brute ? 0.20 : 0.14
+                },
+
+                0x16151b,
+
+                {
+                    x,
+                    y: 0.42,
+                    z: 0
+                }
+            );
+        }
+    }
+
+    else if (
+        type ===
+        "crawler"
+    ) {
+        part(
+            {
+                x: 0.88,
+                y: 0.36,
+                z: 0.86
+            },
+
+            0x30412a,
+
+            {
+                x: 0,
+                y: 0.54,
+                z: 0
+            }
+        );
+
+        part(
+            {
+                x: 0.50,
+                y: 0.32,
+                z: 0.42
+            },
+
+            0x40593b,
+
+            {
+                x: 0,
+                y: 0.58,
+                z: 0.52
+            }
+        );
+
+        for (
+            const x
+            of [
+                -0.14,
+                0.14
+            ]
+        ) {
+            part(
+                {
+                    x: 0.06,
+                    y: 0.06,
+                    z: 0.03
+                },
+
+                0xff3d3d,
+
+                {
+                    x,
+                    y: 0.63,
+                    z: 0.75
+                }
+            );
+        }
+
+        for (
+            const [
+                x,
+                z
+            ]
+            of [
+                [-0.36, -0.28],
+                [0.36, -0.28],
+                [-0.36, 0.28],
+                [0.36, 0.28]
+            ]
+        ) {
+            part(
+                {
+                    x: 0.13,
+                    y: 0.52,
+                    z: 0.13
+                },
+
+                0x1c281a,
+
+                {
+                    x,
+                    y: 0.27,
+                    z
+                }
+            );
+        }
+    }
+
+    // ========================================================
     // MIMIC
     // ========================================================
     else if (
@@ -6107,12 +6730,63 @@ function entityStats(
         };
     }
 
+    if (
+        type ===
+        "shade"
+    ) {
+        return {
+            health:
+                8,
+
+            speed:
+                1.45,
+
+            attack:
+                2
+        };
+    }
+
+    if (
+        type ===
+        "crawler"
+    ) {
+        return {
+            health:
+                6,
+
+            speed:
+                1.7,
+
+            attack:
+                1
+        };
+    }
+
+    if (
+        type ===
+        "brute"
+    ) {
+        return {
+            health:
+                18,
+
+            speed:
+                0.95,
+
+            attack:
+                4
+        };
+    }
+
     return {
         health:
             10,
 
         speed:
-            1.0
+            1.0,
+
+        attack:
+            2
     };
 }
 
@@ -6137,7 +6811,7 @@ function canEntityStand(
         );
 
     return (
-        !blockExists(
+        !solidBlockExists(
             rx,
             g + 1,
             rz
@@ -6154,8 +6828,39 @@ function canEntityStand(
 }
 
 function spawnEntityForChunk(
-    chunk
+    chunk,
+    requestedType =
+        null,
+    idPrefix =
+        "entity",
+    spawnSeed =
+        0
 ) {
+    const chunkBiome =
+        biomeAt(
+            chunk.cx *
+            CHUNK_SIZE +
+            8,
+
+            chunk.cz *
+            CHUNK_SIZE +
+            8
+        );
+
+    if (
+        !requestedType
+        &&
+        (
+            chunkBiome ===
+            "ocean"
+            ||
+            chunkBiome ===
+            "desert"
+        )
+    ) {
+        return;
+    }
+
     const r =
         hash2(
             chunk.cx,
@@ -6164,7 +6869,10 @@ function spawnEntityForChunk(
         );
 
     let type =
-        r <
+        requestedType
+        ||
+        (
+            r <
         0.11
 
             ? "cow"
@@ -6179,12 +6887,8 @@ function spawnEntityForChunk(
 
                     ? "sheep"
 
-                    : r <
-                    0.365
-
-                        ? "mimic"
-
-                        : null;
+                    : null
+        );
 
     if (
         !type
@@ -6193,7 +6897,7 @@ function spawnEntityForChunk(
     }
 
     const id =
-        `entity:${chunk.cx},${chunk.cz}:${type}`;
+        `${idPrefix}:${chunk.cx},${chunk.cz}:${type}`;
 
     if (
         killedEntityIds.has(
@@ -6234,7 +6938,8 @@ function spawnEntityForChunk(
 
                     chunk.cz,
 
-                    506
+                    506 +
+                    spawnSeed
                 ) *
                 12
             );
@@ -6251,7 +6956,8 @@ function spawnEntityForChunk(
                     a *
                     17,
 
-                    507
+                    507 +
+                    spawnSeed
                 ) *
                 12
             );
@@ -6335,7 +7041,41 @@ function spawnEntityForChunk(
             stats.health,
 
         speed:
-            stats.speed,
+            stats.speed *
+            (
+                MONSTER_TYPES.has(
+                    type
+                )
+                &&
+                chunkBiome ===
+                "blackForest"
+                    ? 1.5
+                    : 1
+            ),
+
+        attack:
+            (
+                stats.attack ||
+                0
+            ) *
+            (
+                MONSTER_TYPES.has(
+                    type
+                )
+                &&
+                chunkBiome ===
+                "blackForest"
+                    ? 1.5
+                    : 1
+            ),
+
+        biome:
+            chunkBiome,
+
+        hostile:
+            MONSTER_TYPES.has(
+                type
+            ),
 
         direction:
             hash2(
@@ -6373,6 +7113,176 @@ function spawnEntityForChunk(
     chunk.entityIds.add(
         id
     );
+}
+
+function spawnMonsterForChunk(
+    chunk,
+    slot = 0
+) {
+    if (
+        !isNight
+    ) {
+        return;
+    }
+
+    const x =
+        chunk.cx *
+        CHUNK_SIZE +
+        8;
+
+    const z =
+        chunk.cz *
+        CHUNK_SIZE +
+        8;
+
+    const biome =
+        biomeAt(
+            x,
+            z
+        );
+
+    const hasCave =
+        !!caveEntranceForChunk(
+            chunk.cx,
+            chunk.cz
+        );
+
+    // Hostiles are a night encounter only, and their homes are cave chunks or
+    // the Black Forest. No random daytime monsters wandering through plains.
+    if (
+        biome !==
+        "blackForest"
+        &&
+        !hasCave
+    ) {
+        return;
+    }
+
+    const chance =
+        biome ===
+        "blackForest"
+            ? slot === 0
+                ? 0.60
+                : 0.30
+            : 0.60;
+
+    if (
+        hash2(
+            chunk.cx,
+            chunk.cz,
+            1810 +
+            slot
+        ) >
+        chance
+    ) {
+        return;
+    }
+
+    const r =
+        hash2(
+            chunk.cx,
+            chunk.cz,
+            1820 +
+            slot
+        );
+
+    const type =
+        r <
+        0.30
+            ? "mimic"
+            : r <
+            0.58
+                ? "shade"
+                : r <
+                0.82
+                    ? "crawler"
+                    : "brute";
+
+    spawnEntityForChunk(
+        chunk,
+        type,
+        `monster:${slot}`,
+        700 +
+        slot *
+        41
+    );
+}
+
+function updateMonsterSpawning(
+    delta
+) {
+    if (
+        gameOver
+    ) {
+        return;
+    }
+
+    if (
+        !isNight
+    ) {
+        monsterSpawnTimer =
+            0;
+
+        // They retreat when morning comes, even if the player has not moved.
+        for (
+            const entity
+            of [
+                ...entities.values()
+            ]
+        ) {
+            if (
+                entity.hostile
+            ) {
+                removeEntity(
+                    entity.id,
+                    false
+                );
+            }
+        }
+
+        return;
+    }
+
+    monsterSpawnTimer +=
+        delta;
+
+    if (
+        monsterSpawnTimer <
+        1
+    ) {
+        return;
+    }
+
+    monsterSpawnTimer =
+        0;
+
+    for (
+        const chunk
+        of loadedChunks.values()
+    ) {
+        spawnMonsterForChunk(
+            chunk
+        );
+
+        if (
+            biomeAt(
+                chunk.cx *
+                CHUNK_SIZE +
+                8,
+
+                chunk.cz *
+                CHUNK_SIZE +
+                8
+            ) ===
+            "blackForest"
+        ) {
+            // 0.60 + 0.30 is exactly 1.5x the regular 0.60 spawn pressure.
+            spawnMonsterForChunk(
+                chunk,
+                1
+            );
+        }
+    }
 }
 
 function removeEntity(
@@ -6628,8 +7538,7 @@ function attackEntity(
         damage;
 
     if (
-        e.type !==
-        "mimic"
+        !e.hostile
     ) {
         e.direction =
             Math.atan2(
@@ -6705,7 +7614,7 @@ function entityCanMove(
         return false;
     }
 
-    return !blockExists(
+    return !solidBlockExists(
         Math.round(
             nx
         ),
@@ -6722,6 +7631,12 @@ function entityCanMove(
 function updateEntities(
     delta
 ) {
+    if (
+        gameOver
+    ) {
+        return;
+    }
+
     for (
         const e
         of [
@@ -6762,19 +7677,24 @@ function updateEntities(
         let dir =
             e.direction;
 
-        const mimicAggro =
-            e.type ===
-            "mimic"
+        const hostileAggro =
+            e.hostile
+            &&
+            isNight
             &&
             dist <
             (
-                isNight
-                    ? 22
-                    : 9
+                e.type ===
+                "crawler"
+                    ? 15
+                    : e.type ===
+                    "brute"
+                        ? 18
+                        : 22
             );
 
         if (
-            mimicAggro
+            hostileAggro
         ) {
             dir =
                 Math.atan2(
@@ -6783,18 +7703,13 @@ function updateEntities(
                 );
 
             speed =
-                isNight
-
-                    ? (
-                        dist <
-                        8
-
-                            ? 3.2
-
-                            : 2.25
-                    )
-
-                    : 1.7;
+                e.speed *
+                (
+                    dist <
+                    8
+                        ? 1.22
+                        : 1
+                );
 
             if (
                 dist <
@@ -6807,9 +7722,7 @@ function updateEntities(
                     1.0;
 
                 takeDamage(
-                    isNight
-                        ? 3
-                        : 2
+                    e.attack
                 );
             }
         }
@@ -7005,7 +7918,7 @@ function playerCollides(
                 bz++
             ) {
                 if (
-                    !blockExists(
+                    !solidBlockExists(
                         bx,
                         by,
                         bz
@@ -7263,6 +8176,8 @@ function updateMovement(
     delta
 ) {
     if (
+        gameOver
+        ||
         craftingOpen
     ) {
         return;
@@ -7369,7 +8284,13 @@ function updateMovement(
         BEDROCK_Y -
         12
     ) {
-        respawnPlayer();
+        health =
+            0;
+
+        updateSurvivalHud();
+        showGameOver(
+            "You fell into the void."
+        );
     }
 }
 
@@ -7633,6 +8554,8 @@ function updateMining(
     delta
 ) {
     if (
+        gameOver
+        ||
         !miningHeld
         ||
         craftingOpen
@@ -8327,6 +9250,10 @@ function animate() {
     );
 
     updateEntities(
+        delta
+    );
+
+    updateMonsterSpawning(
         delta
     );
 
