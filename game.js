@@ -2368,6 +2368,11 @@ function treeCanSpawn(
             z,
             6
         )
+        ||
+        nearCaveEntrance(
+            x,
+            z
+        )
     ) {
         return false;
     }
@@ -8652,6 +8657,12 @@ function buildAnimalModel(
         part({ x: 0.62, y: 0.72, z: 1.34 }, 0x9b633c, { x: 0, y: 0.86, z: 0 });
         part({ x: 0.28, y: 0.82, z: 0.28 }, 0xb9784b, { x: 0, y: 1.28, z: 0.46 });
         part({ x: 0.38, y: 0.34, z: 0.42 }, 0xb9784b, { x: 0, y: 1.62, z: 0.62 });
+        // A proper muzzle sticks out past the face, instead of leaving deer
+        // with a flat Minecraft rectangle for a nose.
+        part({ x: 0.30, y: 0.20, z: 0.24 }, 0xc38a5d, { x: 0, y: 1.53, z: 0.91 });
+        for (const x of [-0.08, 0.08]) {
+            part({ x: 0.045, y: 0.045, z: 0.025 }, 0x2a1712, { x, y: 1.54, z: 1.04 });
+        }
         for (const x of [-0.13, 0.13]) {
             part({ x: 0.055, y: 0.055, z: 0.025 }, 0x16100c, { x, y: 1.68, z: 0.84 });
             part({ x: 0.05, y: 0.42, z: 0.05 }, 0xe0c69a, { x, y: 2.03, z: 0.61 });
@@ -9723,6 +9734,15 @@ function spawnEntityForChunk(
         type,
         group,
 
+        baseScale:
+            group.scale.x,
+
+        dying:
+            false,
+
+        deathTimer:
+            0,
+
         mimicDisguise:
             type ===
             "mimic"
@@ -10278,7 +10298,7 @@ function targetEntity() {
     return null;
 }
 
-function killEntity(
+function finishEntityDeath(
     e
 ) {
     if (
@@ -10383,6 +10403,26 @@ function killEntity(
         e.id,
         true
     );
+}
+
+function killEntity(e) {
+    if (!e || e.dying) {
+        return;
+    }
+
+    e.dying = true;
+    e.deathTimer = 0;
+    e.hostile = false;
+    e.flee = 0;
+    e.deathTilt = hash2(e.group.position.x, e.group.position.z, 9931) < 0.5 ? -1 : 1;
+
+    // The body stays visible for the short fall, but it can no longer be hit
+    // or trade/attack while it is dying.
+    e.group.traverse(part => {
+        if (part.isMesh) {
+            entityHitMeshes.delete(part);
+        }
+    });
 }
 
 let attackCooldown =
@@ -10716,6 +10756,21 @@ function updateEntities(
             ...entities.values()
         ]
     ) {
+        if (e.dying) {
+            e.deathTimer += delta;
+
+            const fall = Math.min(1, e.deathTimer / 0.62);
+            e.group.rotation.z = e.deathTilt * fall * Math.PI * 0.48;
+            e.group.position.y -= delta * 0.20;
+            e.group.scale.setScalar(e.baseScale * (1 - fall * 0.24));
+
+            if (e.deathTimer >= 0.62) {
+                finishEntityDeath(e);
+            }
+
+            continue;
+        }
+
         refreshMimicAppearance(
             e
         );
