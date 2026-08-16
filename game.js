@@ -302,7 +302,21 @@ const resumeButton = css(document.createElement("button"), {
 });
 
 resumeButton.textContent = "RESUME";
-pausePanel.append(pauseTitle, pauseText, resumeButton);
+
+const saveButton = css(document.createElement("button"), {
+    display: "block",
+    width: "100%",
+    marginBottom: "10px",
+    padding: "12px 24px",
+    color: "#fff4c4",
+    background: "#80612c",
+    border: "4px solid #2f220d",
+    font: "bold 17px system-ui, sans-serif",
+    cursor: "pointer"
+});
+
+saveButton.textContent = "SAVE GAME";
+pausePanel.append(pauseTitle, pauseText, saveButton, resumeButton);
 pauseOverlay.appendChild(pausePanel);
 document.body.appendChild(pauseOverlay);
 
@@ -336,6 +350,8 @@ const keys = {};
 
 let yaw = 0;
 let pitch = 0;
+let targetYaw = 0;
+let targetPitch = 0;
 let verticalVelocity = 0;
 let onGround = false;
 let craftingOpen = false;
@@ -1188,6 +1204,8 @@ function loadGame() {
         camera.position.set(saved.player.x, saved.player.y, saved.player.z);
         yaw = Number(saved.player.yaw) || 0;
         pitch = clamp(Number(saved.player.pitch) || 0, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
+        targetYaw = yaw;
+        targetPitch = pitch;
         camera.rotation.y = yaw;
         camera.rotation.x = pitch;
         return true;
@@ -1919,6 +1937,45 @@ function caveEntranceForChunk(
     };
 }
 
+function caveLayout(entrance) {
+    if (entrance.rakeLair) {
+        return {
+            rampStart: -2,
+            rampEnd: 12,
+            rampWidth: 3,
+            rampDepth: 11,
+            chamberCenterForward: 13,
+            chamberFloor: entrance.ground - 11,
+            chamberRadius: 5.75,
+            chamberExtent: 6,
+            chamberHeight: 8,
+            tunnelStart: 20,
+            tunnelEnd: 20
+        };
+    }
+
+    return {
+        rampStart: -2,
+        rampEnd: 12,
+        rampWidth: 2,
+        rampDepth: 5,
+        chamberCenterForward: 13,
+        chamberFloor: entrance.ground - 5,
+        chamberRadius: 2.45,
+        chamberExtent: 2,
+        chamberHeight: 4,
+        tunnelStart: 13,
+        tunnelEnd: 20
+    };
+}
+
+function caveRampFloor(entrance, forward) {
+    const layout = caveLayout(entrance);
+    const span = layout.rampEnd - layout.rampStart;
+    const progress = clamp((forward - layout.rampStart) / span, 0, 1);
+    return entrance.ground - Math.floor(progress * layout.rampDepth);
+}
+
 function nearCaveEntrance(
     x,
     z
@@ -1938,12 +1995,13 @@ function nearCaveEntrance(
             }
 
             const forward = z - entrance.z;
+            const layout = caveLayout(entrance);
 
             // Covers the slope, chamber, and the end of the walkable tunnel.
             if (
-                forward >= -4
-                && forward <= 22
-                && Math.abs(x - entrance.x) <= 4
+                forward >= layout.rampStart - 2
+                && forward <= layout.tunnelEnd + 2
+                && Math.abs(x - entrance.x) <= Math.max(4, layout.chamberExtent + 1)
             ) {
                 return true;
             }
@@ -1951,8 +2009,8 @@ function nearCaveEntrance(
             if (
                 Math.hypot(
                     x - entrance.x,
-                    z - (entrance.z + 13)
-                ) < 5
+                    z - (entrance.z + layout.chamberCenterForward)
+                ) < layout.chamberRadius + 1
             ) {
                 return true;
             }
@@ -2007,27 +2065,22 @@ function insideEntrance(
             // into a straight shaft.
             const forward = z - e.z;
             const sideways = Math.abs(x - e.x);
-            const rampStart = -2;
-            const rampEnd = 12;
+            const layout = caveLayout(e);
 
             if (
-                forward >= rampStart
+                forward >= layout.rampStart
                 &&
-                forward <= rampEnd
+                forward <= layout.rampEnd
                 &&
-                sideways <= 2
+                sideways <= layout.rampWidth
             ) {
-                const stairFloor =
-                    e.ground - Math.min(
-                        5,
-                        Math.floor((forward - rampStart) / 2)
-                    );
+                const stairFloor = caveRampFloor(e, forward);
 
                 if (
                     y > stairFloor
                     &&
                     y <= stairFloor +
-                    (e.rakeLair ? 5 : 3)
+                    (e.rakeLair ? 6 : 3)
                 ) {
                     return true;
                 }
@@ -2037,29 +2090,29 @@ function insideEntrance(
             // ramp. The old version hollowed out the floor here and made a pit.
             const chamberDistance = Math.hypot(
                 x - e.x,
-                z - (e.z + rampEnd + 1)
+                z - (e.z + layout.chamberCenterForward)
             );
 
-            const chamberFloor = e.ground - 5;
-            const chamberRadius = e.rakeLair ? 4.25 : 2.45;
+            const chamberFloor = layout.chamberFloor;
+            const chamberRadius = layout.chamberRadius;
 
             if (
                 chamberDistance < chamberRadius
                 &&
                 y > chamberFloor
                 && y <= chamberFloor +
-                (e.rakeLair ? 5 : 4)
+                layout.chamberHeight
             ) {
                 return true;
             }
 
             // A short winding tunnel makes the entrance feel like it joins a
             // cave system, while keeping enough headroom to walk through.
-            const tunnelForward = forward - rampEnd;
+            const tunnelForward = forward - layout.tunnelStart;
 
             if (
-                tunnelForward >= 1
-                && tunnelForward <= 8
+                tunnelForward >= 0
+                && forward <= layout.tunnelEnd
             ) {
                 const tunnelFloor =
                     chamberFloor - Math.floor(tunnelForward / 5);
@@ -2075,7 +2128,7 @@ function insideEntrance(
                     Math.abs(x - tunnelCenterX) <= 1
                     && y > tunnelFloor
                     && y <= tunnelFloor +
-                    (e.rakeLair ? 5 : 3)
+                    (e.rakeLair ? 6 : 3)
                 ) {
                     return true;
                 }
@@ -2098,16 +2151,12 @@ function caveStairBlocks(
     }
 
     const stairs = [];
-    const rampStart = -2;
-    const rampEnd = 12;
+    const layout = caveLayout(entrance);
 
-    for (let forward = rampStart; forward <= rampEnd; forward++) {
-        const floorY = entrance.ground - Math.min(
-            5,
-            Math.floor((forward - rampStart) / 2)
-        );
+    for (let forward = layout.rampStart; forward <= layout.rampEnd; forward++) {
+        const floorY = caveRampFloor(entrance, forward);
 
-        for (let side = -2; side <= 2; side++) {
+        for (let side = -layout.rampWidth; side <= layout.rampWidth; side++) {
             stairs.push({
                 x: entrance.x + side,
                 y: floorY,
@@ -2117,10 +2166,9 @@ function caveStairBlocks(
         }
     }
 
-    const chamberFloor = entrance.ground - 5;
-
-    const chamberRadius = entrance.rakeLair ? 4.25 : 2.45;
-    const chamberExtent = entrance.rakeLair ? 4 : 2;
+    const chamberFloor = layout.chamberFloor;
+    const chamberRadius = layout.chamberRadius;
+    const chamberExtent = layout.chamberExtent;
 
     for (let chamberX = -chamberExtent; chamberX <= chamberExtent; chamberX++) {
         for (let chamberZ = -chamberExtent; chamberZ <= chamberExtent; chamberZ++) {
@@ -2133,13 +2181,14 @@ function caveStairBlocks(
             stairs.push({
                 x: entrance.x + chamberX,
                 y: chamberFloor,
-                z: entrance.z + rampEnd + 1 + chamberZ,
+                z: entrance.z + layout.chamberCenterForward + chamberZ,
                 type: "stone"
             });
         }
     }
 
-    for (let tunnelForward = 1; tunnelForward <= 8; tunnelForward++) {
+    for (let forward = layout.tunnelStart; forward <= layout.tunnelEnd; forward++) {
+        const tunnelForward = forward - layout.tunnelStart;
         const tunnelFloor =
             chamberFloor - Math.floor(tunnelForward / 5);
 
@@ -2154,7 +2203,7 @@ function caveStairBlocks(
             stairs.push({
                 x: tunnelCenterX + side,
                 y: tunnelFloor,
-                z: entrance.z + rampEnd + tunnelForward,
+                z: entrance.z + forward,
                 type: "stone"
             });
         }
@@ -2167,7 +2216,7 @@ function caveStairBlocks(
                     stairs.push({
                         x: tunnelCenterX + side,
                         y: tunnelFloor + height,
-                        z: entrance.z + rampEnd + tunnelForward,
+                        z: entrance.z + forward,
                         type: "wood"
                     });
                 }
@@ -2177,7 +2226,7 @@ function caveStairBlocks(
                 stairs.push({
                     x: tunnelCenterX + side,
                     y: tunnelFloor + 3,
-                    z: entrance.z + rampEnd + tunnelForward,
+                    z: entrance.z + forward,
                     type: "craftingWood"
                 });
             }
@@ -2185,20 +2234,33 @@ function caveStairBlocks(
             stairs.push({
                 x: tunnelCenterX - 1,
                 y: tunnelFloor + 1,
-                z: entrance.z + rampEnd + tunnelForward - 1,
+                z: entrance.z + forward - 1,
                 type: "torch"
             });
         }
     }
 
     if (entrance.rakeLair) {
-        for (const [x, z] of [[-3, -2], [3, -2], [-3, 2], [3, 2]]) {
+        // Four distant red torches frame the wider, deeper boss arena.  The
+        // two back blackwood pillars make it feel deliberately built for him.
+        for (const [x, z] of [[-4, -4], [4, -4], [-4, 4], [4, 4]]) {
             stairs.push({
                 x: entrance.x + x,
                 y: chamberFloor + 1,
-                z: entrance.z + rampEnd + 1 + z,
+                z: entrance.z + layout.chamberCenterForward + z,
                 type: "torch"
             });
+        }
+
+        for (const x of [-4, 4]) {
+            for (let y = 1; y <= 3; y++) {
+                stairs.push({
+                    x: entrance.x + x,
+                    y: chamberFloor + y,
+                    z: entrance.z + layout.chamberCenterForward + 4,
+                    type: "blackwoodWood"
+                });
+            }
         }
     }
 
@@ -2228,32 +2290,28 @@ function caveFloorAt(
 ) {
     const forward = z - entrance.z;
     const sideways = Math.abs(x - entrance.x);
-    const rampStart = -2;
-    const rampEnd = 12;
+    const layout = caveLayout(entrance);
 
     if (
-        forward >= rampStart
+        forward >= layout.rampStart
         &&
-        forward <= rampEnd
+        forward <= layout.rampEnd
         &&
-        sideways <= 2
+        sideways <= layout.rampWidth
     ) {
-        return entrance.ground - Math.min(
-            5,
-            Math.floor((forward - rampStart) / 2)
-        );
+        return caveRampFloor(entrance, forward);
     }
 
     if (
         Math.hypot(
             x - entrance.x,
-            z - (entrance.z + rampEnd + 1)
-        ) < (entrance.rakeLair ? 4.25 : 2.45)
+            z - (entrance.z + layout.chamberCenterForward)
+        ) < layout.chamberRadius
     ) {
-        return entrance.ground - 5;
+        return layout.chamberFloor;
     }
 
-    const tunnelForward = forward - rampEnd;
+    const tunnelForward = forward - layout.tunnelStart;
     const tunnelCenterX =
         entrance.x + Math.round(
             Math.sin(
@@ -2262,13 +2320,12 @@ function caveFloorAt(
         );
 
     if (
-        tunnelForward >= 1
-        &&
-        tunnelForward <= 8
+        tunnelForward >= 0
+        && forward <= layout.tunnelEnd
         &&
         Math.abs(x - tunnelCenterX) <= 1
     ) {
-        return entrance.ground - 5 - Math.floor(tunnelForward / 5);
+        return layout.chamberFloor - Math.floor(tunnelForward / 5);
     }
 
     return null;
@@ -7732,6 +7789,10 @@ function setPaused(
         paused
             ? "flex"
             : "none";
+
+    if (firstPersonRig) {
+        firstPersonRig.visible = !paused;
+    }
 }
 
 function resumeFromPause() {
@@ -7744,6 +7805,17 @@ resumeButton.addEventListener(
     "click",
     resumeFromPause
 );
+
+saveButton.addEventListener("click", () => {
+    saveGame();
+    saveButton.textContent = "SAVED ✓";
+    pauseText.textContent = "World saved safely. You can resume whenever you are ready.";
+
+    setTimeout(() => {
+        saveButton.textContent = "SAVE GAME";
+        pauseText.textContent = "Press Esc or resume when you are ready.";
+    }, 1600);
+});
 
 function takeDamage(
     amount
@@ -9265,29 +9337,46 @@ function buildAnimalModel(
     }
 
     // ========================================================
-    // SKINWALKER — a ragged, antlered regular night hunter.
+    // RAKE BOSS — a towering cave horror from the deep arena.
     // ========================================================
     else if (type === "rakeBoss") {
-        // The Rake is a separate pale arena boss now — not just a bigger
-        // Skinwalker. Its long arms are a warning before the fight starts.
-        part({ x: 0.48, y: 1.02, z: 0.32 }, 0xb8b6a8, { x: 0, y: 1.35, z: 0 });
-        part({ x: 0.46, y: 0.52, z: 0.38 }, 0xc9c5b5, { x: 0, y: 2.20, z: 0.02 });
-        part({ x: 0.16, y: 0.10, z: 0.03 }, 0xdc1826, { x: -0.13, y: 2.28, z: 0.23 });
-        part({ x: 0.16, y: 0.10, z: 0.03 }, 0xdc1826, { x: 0.13, y: 2.28, z: 0.23 });
-        part({ x: 0.30, y: 0.08, z: 0.03 }, 0x302425, { x: 0, y: 2.03, z: 0.23 });
+        // A tall, starving cave thing: sunken eyes, a split grin, exposed
+        // spine, uneven shoulders, and claws that nearly scrape the floor.
+        // It deliberately has a very different silhouette from a Skinwalker.
+        part({ x: 0.58, y: 1.22, z: 0.38 }, 0x76766b, { x: 0, y: 1.40, z: 0 });
+        part({ x: 0.82, y: 0.16, z: 0.42 }, 0x64645b, { x: 0, y: 1.90, z: 0 });
+        part({ x: 0.56, y: 0.62, z: 0.44 }, 0x97958a, { x: 0, y: 2.34, z: 0.02, rotation: { z: -0.08 } });
+        part({ x: 0.36, y: 0.18, z: 0.07 }, 0x171313, { x: 0, y: 2.10, z: 0.275 });
 
-        for (const armX of [-0.40, 0.40]) {
-            part({ x: 0.13, y: 1.48, z: 0.14 }, 0xa7a596, { x: armX, y: 1.18, z: 0 });
-            for (const fingerZ of [-0.07, 0, 0.07]) {
-                part({ x: 0.025, y: 0.28, z: 0.025 }, 0x1a1717, { x: armX, y: 0.34, z: fingerZ });
+        for (const eyeX of [-0.17, 0.17]) {
+            part({ x: 0.16, y: 0.18, z: 0.05 }, 0x070707, { x: eyeX, y: 2.42, z: 0.27 });
+            part({ x: 0.055, y: 0.065, z: 0.065 }, 0xff1b27, { x: eyeX, y: 2.42, z: 0.305 });
+        }
+
+        part({ x: 0.43, y: 0.10, z: 0.055 }, 0x090707, { x: 0, y: 2.21, z: 0.29 });
+        for (const toothX of [-0.17, -0.085, 0, 0.085, 0.17]) {
+            part({ x: 0.035, y: 0.10, z: 0.055 }, 0xe8e1cf, { x: toothX, y: 2.18, z: 0.325 });
+        }
+
+        for (let spineY = 0.94; spineY <= 1.70; spineY += 0.19) {
+            part({ x: 0.12, y: 0.08, z: 0.16 }, 0x4a4a43, { x: 0, y: spineY, z: -0.24 });
+        }
+
+        for (const armX of [-0.52, 0.52]) {
+            const lean = armX < 0 ? -0.17 : 0.17;
+            part({ x: 0.15, y: 1.10, z: 0.15 }, 0x858479, { x: armX, y: 1.33, z: 0, rotation: { z: lean } });
+            part({ x: 0.12, y: 0.92, z: 0.12 }, 0x73736a, { x: armX * 1.08, y: 0.49, z: 0.04, rotation: { z: lean * 1.45 } });
+            for (const fingerZ of [-0.10, 0, 0.10]) {
+                part({ x: 0.032, y: 0.42, z: 0.032 }, 0x171515, { x: armX * 1.10, y: 0.02, z: fingerZ + 0.05 });
             }
         }
 
-        for (const legX of [-0.15, 0.15]) {
-            part({ x: 0.17, y: 1.22, z: 0.18 }, 0x969487, { x: legX, y: 0.54, z: 0 });
+        for (const legX of [-0.18, 0.18]) {
+            part({ x: 0.19, y: 1.30, z: 0.20 }, 0x66665e, { x: legX, y: 0.56, z: 0, rotation: { z: legX * 0.22 } });
+            part({ x: 0.23, y: 0.11, z: 0.34 }, 0x2b2b28, { x: legX, y: -0.12, z: 0.10 });
         }
 
-        g.scale.setScalar(1.34);
+        g.scale.setScalar(1.58);
     }
 
     else if (type === "skinwalker") {
@@ -10273,12 +10362,13 @@ function spawnRakeBossForChunk(chunk) {
         return;
     }
 
+    const layout = caveLayout(entrance);
     const chamberX =
         entrance.x;
 
     const chamberZ =
         entrance.z +
-        13;
+        layout.chamberCenterForward;
 
     // The player has to walk down the staircase into the chamber. Just
     // standing over the hole on the surface does not summon the boss.
@@ -10286,17 +10376,17 @@ function spawnRakeBossForChunk(chunk) {
         Math.hypot(
             camera.position.x - chamberX,
             camera.position.z - chamberZ
-        ) > 3.4
+        ) > layout.chamberRadius - 0.45
         ||
         camera.position.y >
-        entrance.ground - 1.4
+        entrance.ground - 4.2
     ) {
         return;
     }
 
-    // The Rake appears inside the broad chamber itself: a small torch-lit
-    // arena instead of a surprise squeeze through a one-block tunnel.
-    const bossForward = 13;
+    // The Rake waits at the back of a larger torch-lit arena, far below the
+    // surface, rather than spawning in the player’s face at the first step.
+    const bossForward = layout.chamberCenterForward + 2;
     const bossZ =
         entrance.z +
         bossForward;
@@ -11670,6 +11760,17 @@ function moveVertical(
     }
 }
 
+// Mouse movement can arrive in uneven browser-sized bursts.  Following a
+// target angle over a few frames keeps looking around smooth without making
+// the camera feel floaty or changing the player's real movement speed.
+function updateLook(delta) {
+    const smoothing = 1 - Math.exp(-delta * 30);
+    yaw = lerp(yaw, targetYaw, smoothing);
+    pitch = lerp(pitch, targetPitch, smoothing);
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+}
+
 function updateMovement(
     delta
 ) {
@@ -12675,7 +12776,7 @@ function updateFirstPersonRig(delta) {
     handBobTime += delta;
 
     const moving = onGround && (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD);
-    const bob = moving ? Math.sin(handBobTime * 13) * 0.018 : 0;
+    const bob = moving ? Math.sin(handBobTime * 11) * 0.009 : 0;
     const swing = Math.sin((1 - handSwing) * Math.PI) * handSwing;
 
     firstPersonRig.visible = !gameOver && !craftingOpen && !tradingOpen;
@@ -12749,13 +12850,13 @@ function setupControls() {
                 return;
             }
 
-            yaw -=
+            targetYaw -=
                 e.movementX *
                 0.002;
 
-            pitch =
+            targetPitch =
                 clamp(
-                    pitch -
+                    targetPitch -
                     e.movementY *
                     0.002,
 
@@ -12768,11 +12869,6 @@ function setupControls() {
                     0.01
                 );
 
-            camera.rotation.y =
-                yaw;
-
-            camera.rotation.x =
-                pitch;
         }
     );
 
@@ -13329,6 +13425,10 @@ function animate() {
             attackCooldown -
             delta
         );
+
+    updateLook(
+        delta
+    );
 
     updateMovement(
         delta
