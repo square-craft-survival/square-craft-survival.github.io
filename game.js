@@ -1979,6 +1979,55 @@ function structureBlocks(
                     blockType
             });
 
+    if (type === "well") {
+        // A compact stone well, with the water contained in its center.
+        for (let x = -2; x <= 2; x++) {
+            for (let z = -2; z <= 2; z++) {
+                const rim = Math.abs(x) === 2 || Math.abs(z) === 2;
+                add(ox + x, g + 1, oz + z, rim ? "stone" : "water");
+            }
+        }
+
+        for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
+            for (let y = 2; y <= 4; y++) {
+                add(ox + x, g + y, oz + z, "wood");
+            }
+        }
+
+        for (let x = -3; x <= 3; x++) {
+            add(ox + x, g + 5, oz - 2, "craftingWood");
+            add(ox + x, g + 5, oz + 2, "craftingWood");
+        }
+
+        return out;
+    }
+
+    if (type === "tower") {
+        // A ruined watchtower: four broken pillars, roof, and a gold cache.
+        for (let x = -2; x <= 2; x++) {
+            for (let z = -2; z <= 2; z++) {
+                add(ox + x, g + 1, oz + z, "stone");
+            }
+        }
+
+        for (let y = 2; y <= 7; y++) {
+            for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
+                if (y !== 5 || hash3(ox + x, g + y, oz + z, 913) > 0.42) {
+                    add(ox + x, g + y, oz + z, "stone");
+                }
+            }
+        }
+
+        for (let x = -3; x <= 3; x++) {
+            for (let z = -3; z <= 3; z++) {
+                add(ox + x, g + 8, oz + z, "craftingWood");
+            }
+        }
+
+        add(ox, g + 2, oz, "goldOre");
+        return out;
+    }
+
     if (
         type ===
         "hut"
@@ -6061,62 +6110,169 @@ function updateSwimmingState(
     }
 
     else if (
-        type ===
-        "well"
+        false
     ) {
-        // Low stone well with shallow water and a wooden roof frame.
-        for (let x = -2; x <= 2; x++) {
-            for (let z = -2; z <= 2; z++) {
-                const edge = Math.abs(x) === 2 || Math.abs(z) === 2;
+        // A small stone well: water stays inside the rim, so it never
+        // turns the whole structure into a weird flooded square.
+        for (
+            let x = -2;
+            x <= 2;
+            x++
+        ) {
+            for (
+                let z = -2;
+                z <= 2;
+                z++
+            ) {
+                const edge =
+                    Math.abs(x) === 2
+                    ||
+                    Math.abs(z) === 2;
 
-                if (edge) {
-                    add(ox + x, g + 1, oz + z, "stone");
-                }
-
-                else if (Math.abs(x) <= 1 && Math.abs(z) <= 1) {
-                    add(ox + x, g + 2, oz + z, "water");
-                }
+                add(
+                    ox + x,
+                    g + 1,
+                    oz + z,
+                    edge
+                        ? "stone"
+                        : "water"
+                );
             }
         }
 
-        for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
-            for (let y = 2; y <= 4; y++) {
-                add(ox + x, g + y, oz + z, "wood");
+        for (
+            const [
+                x,
+                z
+            ]
+            of [
+                [-2, -2],
+                [2, -2],
+                [-2, 2],
+                [2, 2]
+            ]
+        ) {
+            for (
+                let y = 2;
+                y <= 4;
+                y++
+            ) {
+                add(
+                    ox + x,
+                    g + y,
+                    oz + z,
+                    "wood"
+                );
             }
         }
 
-        for (let x = -3; x <= 3; x++) {
-            add(ox + x, g + 5, oz - 2, "craftingWood");
-            add(ox + x, g + 5, oz + 2, "craftingWood");
+        for (
+            let x = -3;
+            x <= 3;
+            x++
+        ) {
+            add(
+                ox + x,
+                g + 5,
+                oz - 2,
+                "craftingWood"
+            );
+
+            add(
+                ox + x,
+                g + 5,
+                oz + 2,
+                "craftingWood"
+            );
         }
     }
 
     else if (
-        type ===
-        "tower"
+        false
     ) {
-        // A small ruined watchtower with a loot-like ore marker at its base.
-        for (let x = -2; x <= 2; x++) {
-            for (let z = -2; z <= 2; z++) {
-                add(ox + x, g + 1, oz + z, "stone");
+        // A ruined watchtower with an open doorway and a loot block.
+        for (
+            let x = -2;
+            x <= 2;
+            x++
+        ) {
+            for (
+                let z = -2;
+                z <= 2;
+                z++
+            ) {
+                add(
+                    ox + x,
+                    g + 1,
+                    oz + z,
+                    "stone"
+                );
             }
         }
 
-        for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
-            for (let y = 2; y <= 8; y++) {
-                if (y !== 5 || hash3(ox + x, g + y, oz + z, 916) > 0.22) {
-                    add(ox + x, g + y, oz + z, "stone");
+        for (
+            let y = 2;
+            y <= 7;
+            y++
+        ) {
+            for (
+                const [
+                    x,
+                    z
+                ]
+                of [
+                    [-2, -2],
+                    [2, -2],
+                    [-2, 2],
+                    [2, 2]
+                ]
+            ) {
+                if (
+                    y !== 5
+                    ||
+                    hash3(
+                        ox + x,
+                        g + y,
+                        oz + z,
+                        913
+                    ) >
+                    0.42
+                ) {
+                    add(
+                        ox + x,
+                        g + y,
+                        oz + z,
+                        "stone"
+                    );
                 }
             }
         }
 
-        for (let x = -3; x <= 3; x++) {
-            for (let z = -3; z <= 3; z++) {
-                add(ox + x, g + 8, oz + z, "craftingWood");
+        for (
+            let x = -3;
+            x <= 3;
+            x++
+        ) {
+            for (
+                let z = -3;
+                z <= 3;
+                z++
+            ) {
+                add(
+                    ox + x,
+                    g + 8,
+                    oz + z,
+                    "craftingWood"
+                );
             }
         }
 
-        add(ox, g + 2, oz, "goldOre");
+        add(
+            ox,
+            g + 2,
+            oz,
+            "goldOre"
+        );
     }
 
     else {
@@ -8162,6 +8318,36 @@ function killEntity(
         );
     }
 
+    else if (
+        e.type ===
+        "deer"
+    ) {
+        addItem(
+            "mutton",
+            2
+        );
+    }
+
+    else if (
+        e.type ===
+        "boar"
+    ) {
+        addItem(
+            "pork",
+            2
+        );
+    }
+
+    else if (
+        e.type ===
+        "chicken"
+    ) {
+        addItem(
+            "chicken",
+            1
+        );
+    }
+
     else {
         addItem(
             "coal",
@@ -9155,36 +9341,6 @@ function updateMovement(
         moveVertical(
             verticalVelocity *
             delta
-        );
-    }
-
-    else if (
-        e.type ===
-        "deer"
-    ) {
-        addItem(
-            "mutton",
-            2
-        );
-    }
-
-    else if (
-        e.type ===
-        "boar"
-    ) {
-        addItem(
-            "pork",
-            2
-        );
-    }
-
-    else if (
-        e.type ===
-        "chicken"
-    ) {
-        addItem(
-            "chicken",
-            1
         );
     }
 
