@@ -12873,20 +12873,20 @@ function createFirstPersonRig() {
     // camera than the old test arm, so perspective cannot turn it into a huge
     // blue wedge on the screen.
     firstPersonRig = new THREE.Group();
-    firstPersonRig.position.set(0.60, -0.56, -1.68);
-    firstPersonRig.rotation.set(0.04, -0.10, -0.18);
+    firstPersonRig.position.set(1.35, -0.82, -1.85);
+    firstPersonRig.rotation.set(0.04, -0.10, -0.12);
 
     firstPersonArm = new THREE.Group();
     firstPersonRig.add(firstPersonArm);
 
-    // Sleeve, wrist, and a compact square palm: simple on purpose, with no
-    // extra fingers or flat HUD shapes that can look like a foot.
-    firstPersonBox(firstPersonArm, [0.16, 0.38, 0.16], [0.02, 0.13, 0.05], 0x3571a5, [0.08, 0, -0.10]);
-    firstPersonBox(firstPersonArm, [0.15, 0.18, 0.15], [0, -0.14, -0.01], 0xe0a070, [0.08, 0, -0.10]);
-    firstPersonBox(firstPersonArm, [0.19, 0.10, 0.18], [-0.02, -0.27, -0.07], 0xedb081, [0.08, 0, -0.10]);
+    // Skin is up toward the held item; the blue sleeve runs down into the
+    // corner.  That reads as an arm coming from the player, not a boot.
+    firstPersonBox(firstPersonArm, [0.16, 0.40, 0.16], [0.02, -0.17, 0.05], 0x3571a5, [0.08, 0, -0.10]);
+    firstPersonBox(firstPersonArm, [0.15, 0.18, 0.15], [0, 0.14, -0.01], 0xe0a070, [0.08, 0, -0.10]);
+    firstPersonBox(firstPersonArm, [0.19, 0.10, 0.18], [-0.02, 0.27, -0.07], 0xedb081, [0.08, 0, -0.10]);
 
     heldItemRig = new THREE.Group();
-    heldItemRig.position.set(-0.18, -0.18, -0.18);
+    heldItemRig.position.set(-0.18, 0.26, -0.18);
     heldItemRig.rotation.set(0.12, -0.25, 0.10);
     firstPersonArm.add(heldItemRig);
 
@@ -12920,8 +12920,8 @@ function updateFirstPersonRig(delta) {
 
     firstPersonRig.visible = visible;
     handHud.style.display = "none";
-    firstPersonRig.position.set(0.60, -0.56 + bob, -1.68 + swing * 0.035);
-    firstPersonRig.rotation.set(0.04 + swing * 0.07, -0.10, -0.18);
+    firstPersonRig.position.set(1.35, -0.82 + bob, -1.85 + swing * 0.035);
+    firstPersonRig.rotation.set(0.04 + swing * 0.07, -0.10, -0.12);
     firstPersonArm.rotation.set(0, 0, -0.03 - swing * 0.04);
     heldItemRig.rotation.set(0.12 - swing * 0.06, -0.25, 0.10);
 }
