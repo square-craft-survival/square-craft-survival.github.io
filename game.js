@@ -333,6 +333,7 @@ let pitch = 0;
 let verticalVelocity = 0;
 let onGround = false;
 let craftingOpen = false;
+let tradingOpen = false;
 let gameOver = false;
 let paused = false;
 
@@ -481,12 +482,19 @@ const INVENTORY = {
     ironAxe: 0,
     ironPickaxe: 0,
 
+    diamondAxe: 0,
+    diamondPickaxe: 0,
+
     woodSword: 0,
     stoneSword: 0,
     ironSword: 0,
+    diamondSword: 0,
 
     woodArmor: 0,
+    stoneArmor: 0,
     ironArmor: 0,
+    goldArmor: 0,
+    diamondArmor: 0,
 
     beef: 0,
     pork: 0,
@@ -624,6 +632,30 @@ const RECIPES = [
     },
 
     {
+        name: "Diamond Axe",
+        input: {
+            diamond: 3,
+            sticks: 2
+        },
+        output: {
+            diamondAxe: 1
+        },
+        text: "3 Diamonds + 2 Sticks"
+    },
+
+    {
+        name: "Diamond Pickaxe",
+        input: {
+            diamond: 3,
+            sticks: 2
+        },
+        output: {
+            diamondPickaxe: 1
+        },
+        text: "3 Diamonds + 2 Sticks"
+    },
+
+    {
         name: "Wood Sword",
         input: {
             craftingWood: 2,
@@ -660,6 +692,18 @@ const RECIPES = [
     },
 
     {
+        name: "Diamond Sword",
+        input: {
+            diamond: 2,
+            sticks: 1
+        },
+        output: {
+            diamondSword: 1
+        },
+        text: "2 Diamonds + 1 Stick"
+    },
+
+    {
         name: "Wood Armor",
         input: {
             craftingWood: 12,
@@ -680,6 +724,39 @@ const RECIPES = [
             ironArmor: 1
         },
         text: "12 Iron"
+    },
+
+    {
+        name: "Stone Armor",
+        input: {
+            stone: 14
+        },
+        output: {
+            stoneArmor: 1
+        },
+        text: "14 Stone"
+    },
+
+    {
+        name: "Gold Armor",
+        input: {
+            gold: 10
+        },
+        output: {
+            goldArmor: 1
+        },
+        text: "10 Gold"
+    },
+
+    {
+        name: "Diamond Armor",
+        input: {
+            diamond: 8
+        },
+        output: {
+            diamondArmor: 1
+        },
+        text: "8 Diamonds"
     },
 
     {
@@ -748,13 +825,19 @@ const NAMES = {
 
     ironAxe: "Iron Axe",
     ironPickaxe: "Iron Pickaxe",
+    diamondAxe: "Diamond Axe",
+    diamondPickaxe: "Diamond Pickaxe",
 
     woodSword: "Wood Sword",
     stoneSword: "Stone Sword",
     ironSword: "Iron Sword",
+    diamondSword: "Diamond Sword",
 
     woodArmor: "Wood Armor",
+    stoneArmor: "Stone Armor",
     ironArmor: "Iron Armor",
+    goldArmor: "Gold Armor",
+    diamondArmor: "Diamond Armor",
 
     sticks: "Sticks",
 
@@ -771,25 +854,30 @@ const isAxe = item =>
     [
         "woodAxe",
         "stoneAxe",
-        "ironAxe"
+        "ironAxe",
+        "diamondAxe"
     ].includes(item);
 
 const isPickaxe = item =>
     [
         "woodPickaxe",
         "stonePickaxe",
-        "ironPickaxe"
+        "ironPickaxe",
+        "diamondPickaxe"
     ].includes(item);
 
 const isSword = item =>
     [
         "woodSword",
         "stoneSword",
-        "ironSword"
+        "ironSword",
+        "diamondSword"
     ].includes(item);
 
 const swordDamage = item =>
-    item === "ironSword"
+    item === "diamondSword"
+        ? 8
+        : item === "ironSword"
         ? 6
         : item === "stoneSword"
             ? 4.5
@@ -800,18 +888,29 @@ const swordDamage = item =>
 const isArmor = item =>
     [
         "woodArmor",
-        "ironArmor"
+        "stoneArmor",
+        "ironArmor",
+        "goldArmor",
+        "diamondArmor"
     ].includes(item);
 
 const armorProtection = () =>
-    equippedArmor === "ironArmor"
+    equippedArmor === "diamondArmor"
+        ? 0.75
+        : equippedArmor === "goldArmor"
+            ? 0.60
+            : equippedArmor === "ironArmor"
         ? 0.5
+        : equippedArmor === "stoneArmor"
+            ? 0.38
         : equippedArmor === "woodArmor"
             ? 0.25
             : 0;
 
 const pickTier = item =>
-    item === "ironPickaxe"
+    item === "diamondPickaxe"
+        ? 4
+        : item === "ironPickaxe"
         ? 3
         : item === "stonePickaxe"
             ? 2
@@ -820,7 +919,9 @@ const pickTier = item =>
                 : 0;
 
 const axeTier = item =>
-    item === "ironAxe"
+    item === "diamondAxe"
+        ? 4
+        : item === "ironAxe"
         ? 3
         : item === "stoneAxe"
             ? 2
@@ -4322,6 +4423,10 @@ function loadChunk(
         chunk
     );
 
+    spawnTraderForChunk(
+        chunk
+    );
+
     return chunk;
 }
 
@@ -5156,7 +5261,11 @@ function itemIcon(
                     "stone"
                 )
                     ? "#888"
-                    : "#d8e0e8";
+                    : type.startsWith(
+                        "diamond"
+                    )
+                        ? "#58e7e2"
+                        : "#d8e0e8";
 
         x.fillStyle =
             "#6c4428";
@@ -5181,11 +5290,15 @@ function itemIcon(
             )
     ) {
         const plate =
-            type.startsWith(
-                "iron"
-            )
-                ? "#c7d4df"
-                : "#a87a4c";
+            type.startsWith("diamond")
+                ? "#58e7e2"
+                : type.startsWith("gold")
+                    ? "#e8c24f"
+                    : type.startsWith("iron")
+                        ? "#c7d4df"
+                        : type.startsWith("stone")
+                            ? "#8a8a8a"
+                            : "#a87a4c";
 
         x.fillStyle =
             plate;
@@ -5218,7 +5331,11 @@ function itemIcon(
 
                     ? "#888"
 
-                    : "#c7c7c7";
+                    : type.startsWith(
+                        "diamond"
+                    )
+                        ? "#58e7e2"
+                        : "#c7c7c7";
 
         x.fillStyle =
             "#6c4428";
@@ -5289,7 +5406,11 @@ function itemIcon(
 
                     ? "#888"
 
-                    : "#c7c7c7";
+                    : type.startsWith(
+                        "diamond"
+                    )
+                        ? "#58e7e2"
+                        : "#c7c7c7";
 
         x.fillStyle =
             tier;
@@ -6536,6 +6657,160 @@ function setCrafting(
 }
 
 // ============================================================
+// TRADER MENU
+// ============================================================
+const TRADER_OFFERS = [
+    {
+        gold: 1,
+        rewards: { coal: 6, torch: 8 },
+        text: "6 Coal + 8 Torches"
+    },
+    {
+        gold: 2,
+        rewards: { iron: 4 },
+        text: "4 Iron"
+    },
+    {
+        gold: 4,
+        rewards: { diamond: 1 },
+        text: "1 Diamond"
+    },
+    {
+        gold: 7,
+        rewards: { diamond: 2, iron: 3 },
+        text: "2 Diamonds + 3 Iron"
+    }
+];
+
+const tradeOverlay =
+    css(
+        document.createElement("div"),
+        {
+            display: "none",
+            position: "fixed",
+            inset: "0",
+            zIndex: "1000",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,.68)",
+            fontFamily: "monospace",
+            color: "white"
+        }
+    );
+
+const tradePanel =
+    css(
+        document.createElement("div"),
+        {
+            width: "min(560px,88vw)",
+            maxHeight: "82vh",
+            overflowY: "auto",
+            boxSizing: "border-box",
+            padding: "22px",
+            background: "#29211c",
+            border: "5px solid #d0a73b",
+            boxShadow: "0 0 0 5px #111"
+        }
+    );
+
+tradeOverlay.appendChild(tradePanel);
+document.body.appendChild(tradeOverlay);
+
+function updateTradeMenu() {
+    tradePanel.innerHTML = "";
+
+    const title = document.createElement("h2");
+    title.textContent = "TRADER";
+    title.style.margin = "0 0 8px";
+
+    const hint = document.createElement("div");
+    hint.textContent = `Gold in inventory: ${INVENTORY.gold}  •  Gold gets you supplies`;
+    hint.style.color = "#f4d676";
+    hint.style.marginBottom = "18px";
+
+    tradePanel.append(title, hint);
+
+    for (const offer of TRADER_OFFERS) {
+        const row = css(document.createElement("div"), {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "14px",
+            padding: "13px",
+            marginBottom: "10px",
+            background: "#3c3128",
+            border: "3px solid #15110d"
+        });
+
+        const info = document.createElement("div");
+        info.innerHTML = `<strong>${offer.gold} GOLD</strong><br><span style="color:#ddd">for ${offer.text}</span>`;
+
+        const button = document.createElement("button");
+        const affordable = INVENTORY.gold >= offer.gold;
+        button.textContent = affordable ? "TRADE" : "NEED GOLD";
+        button.disabled = !affordable;
+        css(button, {
+            minWidth: "118px",
+            padding: "10px",
+            font: "inherit",
+            fontWeight: "bold",
+            color: affordable ? "#17120b" : "#999",
+            background: affordable ? "#d0a73b" : "#3d3d3d",
+            border: "3px solid #111",
+            cursor: affordable ? "pointer" : "not-allowed"
+        });
+
+        button.addEventListener("click", () => {
+            if (!removeItem("gold", offer.gold)) {
+                return;
+            }
+
+            for (const [type, amount] of Object.entries(offer.rewards)) {
+                addItem(type, amount);
+            }
+
+            showLootToast(`TRADE: ${offer.text}`);
+            updateTradeMenu();
+        });
+
+        row.append(info, button);
+        tradePanel.appendChild(row);
+    }
+
+    const closeButton = document.createElement("button");
+    closeButton.textContent = "LEAVE TRADER";
+    css(closeButton, {
+        width: "100%",
+        padding: "12px",
+        font: "inherit",
+        fontWeight: "bold",
+        color: "white",
+        background: "#555",
+        border: "3px solid #111",
+        cursor: "pointer"
+    });
+    closeButton.addEventListener("click", () => setTrading(false));
+    tradePanel.appendChild(closeButton);
+}
+
+function setTrading(open) {
+    tradingOpen = open;
+    tradeOverlay.style.display = open ? "flex" : "none";
+
+    Object.keys(keys).forEach(k => keys[k] = false);
+    miningHeld = false;
+    resetMining();
+
+    if (open) {
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+
+        updateTradeMenu();
+    }
+}
+
+// ============================================================
 // SURVIVAL
 // ============================================================
 function updateSurvivalHud() {
@@ -6630,6 +6905,12 @@ function showGameOver(
     craftingOverlay.style.display =
         "none";
 
+    tradingOpen =
+        false;
+
+    tradeOverlay.style.display =
+        "none";
+
     miningHeld =
         false;
 
@@ -6720,6 +7001,12 @@ function setPaused(
         craftingOverlay.style.display =
             "none";
 
+        tradingOpen =
+            false;
+
+        tradeOverlay.style.display =
+            "none";
+
         if (
             document.pointerLockElement
         ) {
@@ -6794,6 +7081,8 @@ function updateSurvival(
         gameOver
         ||
         craftingOpen
+        ||
+        tradingOpen
     ) {
         return;
     }
@@ -8137,7 +8426,7 @@ function buildAnimalModel(
     // ========================================================
     // MIMIC — Steve-shaped black-shirt nightmare
     // ========================================================
-    else if (type === "mimic") {
+    else if (type === "mimic" || type === "trader") {
         const skin = 0x705a56;
         const shirt = 0x090a0d;
         const pants = 0x141826;
@@ -8148,7 +8437,7 @@ function buildAnimalModel(
         part({ x: 0.66, y: 0.14, z: 0.56 }, 0x0b090a, { x: 0, y: 2.39, z: 0.02 });
         part({ x: 0.58, y: 0.88, z: 0.34 }, shirt, { x: 0, y: 1.39, z: 0 });
 
-        if (mimicDisguise) {
+        if (mimicDisguise || type === "trader") {
             part({ x: 0.54, y: 0.54, z: 0.032 }, 0xb97862, { x: 0, y: 2.08, z: 0.304 });
             for (const eyeX of [-0.13, 0.13]) {
                 part({ x: 0.09, y: 0.08, z: 0.025 }, 0xeaf3ff, { x: eyeX, y: 2.10, z: 0.327 });
@@ -8171,6 +8460,12 @@ function buildAnimalModel(
             }
             part({ x: 0.055, y: 0.20, z: 0.03 }, 0x2b1113, { x: -0.26, y: 2.01, z: 0.309, rotation: { z: -0.48 } });
             part({ x: 0.055, y: 0.17, z: 0.03 }, 0x2b1113, { x: 0.25, y: 2.08, z: 0.309, rotation: { z: 0.52 } });
+        }
+
+        if (type === "trader") {
+            // Gold trim makes the peaceful Steve-shaped trader easy to spot.
+            part({ x: 0.66, y: 0.10, z: 0.57 }, 0xd0a73b, { x: 0, y: 1.15, z: 0.02 });
+            part({ x: 0.16, y: 0.14, z: 0.035 }, 0xf2cf58, { x: 0, y: 1.15, z: 0.31 });
         }
 
         for (const armX of [-0.42, 0.42]) {
@@ -8587,6 +8882,10 @@ function entityStats(
         return { health: 9, speed: 1.65, attack: 2.5 };
     }
 
+    if (type === "trader") {
+        return { health: 14, speed: 0.26 };
+    }
+
     return {
         health:
             10,
@@ -8951,6 +9250,10 @@ function spawnEntityForChunk(
                 type
             ),
 
+        trader:
+            type ===
+            "trader",
+
         direction:
             hash2(
                 x,
@@ -9005,6 +9308,35 @@ function spawnEntityForChunk(
 
     chunk.entityIds.add(
         id
+    );
+}
+
+function spawnTraderForChunk(
+    chunk
+) {
+    if (!structureForChunk(chunk.cx, chunk.cz)) {
+        return;
+    }
+
+    const center = structureCenter(chunk.cx, chunk.cz);
+    // Four blocks out is beside every structure, but still inside the tree-free
+    // structure clearing, so the trader never materializes inside leaves.
+    const x = center.x + 4;
+    const z = center.z + 4;
+
+    spawnEntityForChunk(
+        chunk,
+        "trader",
+        "trader",
+        3611,
+        {
+            minimumPlayerDistance: 2,
+            position: {
+                x,
+                y: terrainHeight(Math.round(x), Math.round(z)) + 0.5,
+                z
+            }
+        }
     );
 }
 
@@ -9985,6 +10317,11 @@ function updateEntities(
                 1.8;
         }
 
+        else if (e.trader) {
+            // Traders stay by their structure instead of pacing into the woods.
+            speed = 0;
+        }
+
         else {
             e.wander -=
                 delta;
@@ -10473,6 +10810,8 @@ function updateMovement(
         gameOver
         ||
         craftingOpen
+        ||
+        tradingOpen
     ) {
         return;
     }
@@ -10813,7 +11152,8 @@ function miningTime(
                 0,
                 1,
                 0.72,
-                0.5
+                0.5,
+                0.34
             ][
                 axeTier(
                     tool
@@ -10846,7 +11186,8 @@ function miningTime(
             0,
             3,
             2,
-            1.35
+            1.35,
+            0.85
         ][
             pickTier(
                 tool
@@ -10937,6 +11278,8 @@ function updateMining(
         !miningHeld
         ||
         craftingOpen
+        ||
+        tradingOpen
     ) {
         resetMining();
 
@@ -11214,6 +11557,8 @@ function setupControls() {
                 &&
                 !craftingOpen
                 &&
+                !tradingOpen
+                &&
                 document.pointerLockElement !==
                 renderer.domElement
             ) {
@@ -11254,6 +11599,8 @@ function setupControls() {
                 paused
                 ||
                 craftingOpen
+                ||
+                tradingOpen
                 ||
                 document.pointerLockElement !==
                 renderer.domElement
@@ -11300,6 +11647,11 @@ function setupControls() {
             ) {
                 e.preventDefault();
 
+                if (tradingOpen) {
+                    setTrading(false);
+                    return;
+                }
+
                 if (
                     paused
                 ) {
@@ -11318,6 +11670,15 @@ function setupControls() {
             if (
                 paused
             ) {
+                return;
+            }
+
+            if (tradingOpen) {
+                if (e.code === "KeyE" && !e.repeat) {
+                    e.preventDefault();
+                    setTrading(false);
+                }
+
                 return;
             }
 
@@ -11413,6 +11774,8 @@ function setupControls() {
                 ||
                 craftingOpen
                 ||
+                tradingOpen
+                ||
                 document.pointerLockElement !==
                 renderer.domElement
             ) {
@@ -11463,6 +11826,24 @@ function setupControls() {
             ) {
                 const blockTarget =
                     targetBlock();
+
+                const entityTarget =
+                    targetEntity();
+
+                if (
+                    entityTarget?.entity.trader
+                    &&
+                    (
+                        !blockTarget
+                        ||
+                        entityTarget.hit.distance <
+                        blockTarget.hit.distance
+                    )
+                ) {
+                    setTrading(true);
+
+                    return;
+                }
 
                 if (
                     blockTarget?.block.type ===
@@ -11522,6 +11903,8 @@ function setupControls() {
                 paused
                 ||
                 craftingOpen
+                ||
+                tradingOpen
                 ||
                 document.pointerLockElement !==
                 renderer.domElement
