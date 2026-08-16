@@ -12881,9 +12881,8 @@ function createFirstPersonRig() {
 
     // Skin is up toward the held item; the blue sleeve runs down into the
     // corner.  That reads as an arm coming from the player, not a boot.
-    firstPersonBox(firstPersonArm, [0.16, 0.40, 0.16], [0.02, -0.17, 0.05], 0x3571a5, [0.08, 0, -0.10]);
-    firstPersonBox(firstPersonArm, [0.15, 0.18, 0.15], [0, 0.14, -0.01], 0xe0a070, [0.08, 0, -0.10]);
-    firstPersonBox(firstPersonArm, [0.19, 0.10, 0.18], [-0.02, 0.27, -0.07], 0xedb081, [0.08, 0, -0.10]);
+    firstPersonBox(firstPersonArm, [0.16, 0.40, 0.16], [0, -0.13, -0.01], 0x3571a5, [0.08, 0, -0.10]);
+    firstPersonBox(firstPersonArm, [0.15, 0.18, 0.15], [0, 0.16, -0.01], 0xe0a070, [0.08, 0, -0.10]);
 
     heldItemRig = new THREE.Group();
     heldItemRig.position.set(-0.18, 0.26, -0.18);
