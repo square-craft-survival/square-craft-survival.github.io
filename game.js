@@ -136,12 +136,17 @@ function makeMeter(name, filled, empty) {
 
     return {
         label,
-        parts
+        parts,
+        row
     };
 }
 
 const healthMeter = makeMeter("HEALTH", "#b92e2e", "#3a2020");
 const hungerMeter = makeMeter("HUNGER", "#c8872d", "#3d2d1c");
+const airMeter = makeMeter("AIR", "#5abcf5", "#19384d");
+
+airMeter.row.style.display =
+    "none";
 
 const clockHud = css(document.createElement("div"), {
     position: "fixed",
@@ -258,10 +263,17 @@ let hunger = 20;
 
 const MAX_HEALTH = 20;
 const MAX_HUNGER = 20;
+const MAX_AIR = 10;
+
+const SWIM_SPEED = 3.8;
+const SWIM_SURFACE_OFFSET = 0.34;
 
 let hungerTimer = 0;
 let starvationTimer = 0;
 let regenTimer = 0;
+let air = MAX_AIR;
+let airDamageTimer = 0;
+let isUnderwater = false;
 
 // ============================================================
 // WORLD SETTINGS
@@ -304,6 +316,10 @@ const BLOCKS = [
     "water",
     "wood",
     "leaves",
+    "redwoodWood",
+    "redwoodLeaves",
+    "blackwoodWood",
+    "blackwoodLeaves",
     "stone",
     "craftingWood",
     "coalOre",
@@ -323,6 +339,10 @@ const PLACEABLE = new Set([
     "brick",
     "wood",
     "leaves",
+    "redwoodWood",
+    "redwoodLeaves",
+    "blackwoodWood",
+    "blackwoodLeaves",
     "stone",
     "craftingWood",
     "coalOre",
@@ -341,6 +361,10 @@ const INVENTORY = {
     brick: 0,
     wood: 0,
     leaves: 0,
+    redwoodWood: 0,
+    redwoodLeaves: 0,
+    blackwoodWood: 0,
+    blackwoodLeaves: 0,
     stone: 0,
     craftingWood: 0,
 
@@ -511,6 +535,10 @@ const NAMES = {
     brick: "Brick",
     wood: "Wood",
     leaves: "Leaves",
+    redwoodWood: "Redwood",
+    redwoodLeaves: "Redwood Needles",
+    blackwoodWood: "Blackwood",
+    blackwoodLeaves: "Blackwood Leaves",
     stone: "Stone",
 
     craftingWood: "Crafting Wood",
@@ -765,35 +793,28 @@ function biomeAt(
 
     if (
         r <
-        0.16
-    ) {
-        return "ocean";
-    }
-
-    if (
-        r <
-        0.34
+        0.22
     ) {
         return "desert";
     }
 
     if (
         r <
-        0.49
+        0.40
     ) {
         return "swamp";
     }
 
     if (
         r <
-        0.66
+        0.61
     ) {
         return "redwoodForest";
     }
 
     if (
         r <
-        0.82
+        0.78
     ) {
         return "blackForest";
     }
@@ -864,26 +885,17 @@ function terrainHeight(
 
     const base =
         biome ===
-        "ocean"
-            ? 1
+        "swamp"
+            ? 4
             : biome ===
-            "swamp"
-                ? 4
-                : biome ===
-                "desert"
-                    ? 7
-                    : 6;
+            "desert"
+                ? 7
+                : 6;
 
     const variation =
-        biome ===
-        "ocean"
-            ? broad *
-            0.28 +
-            ridges *
-            0.18
-            : broad +
-            ridges +
-            bumps;
+        broad +
+        ridges +
+        bumps;
 
     return clamp(
         Math.floor(
@@ -908,9 +920,6 @@ function surfaceBlockAt(
 
     if (
         biome ===
-        "ocean"
-        ||
-        biome ===
         "desert"
     ) {
         return "sand";
@@ -931,6 +940,15 @@ function surfaceBlockAt(
     }
 
     return "grass";
+}
+
+function waterSurfaceAt(
+    _x,
+    _z
+) {
+    // Water generation is intentionally disabled for now. Keeping this helper
+    // lets the swim system stay ready for rivers/lakes later.
+    return null;
 }
 
 function caveNoise(
@@ -1513,6 +1531,24 @@ function treeBlocks(
             z
         );
 
+    const trunkType =
+        biome ===
+        "redwoodForest"
+            ? "redwoodWood"
+            : biome ===
+            "blackForest"
+                ? "blackwoodWood"
+                : "wood";
+
+    const leafType =
+        biome ===
+        "redwoodForest"
+            ? "redwoodLeaves"
+            : biome ===
+            "blackForest"
+                ? "blackwoodLeaves"
+                : "leaves";
+
     const height =
         biome ===
         "redwoodForest"
@@ -1571,7 +1607,7 @@ function treeBlocks(
             z,
 
             type:
-                "wood"
+                trunkType
         });
     }
 
@@ -1632,7 +1668,7 @@ function treeBlocks(
                         dz,
 
                     type:
-                        "leaves"
+                        leafType
                 });
             }
         }
@@ -1662,7 +1698,7 @@ function treeBlocks(
                     dz,
 
                 type:
-                    "leaves"
+                    leafType
             });
         }
     }
@@ -1677,7 +1713,7 @@ function treeBlocks(
         z,
 
         type:
-            "leaves"
+            leafType
     });
 
     return out;
@@ -2203,66 +2239,6 @@ function generateChunkBlocks(
                     );
                 }
             }
-        }
-    }
-
-    // Water is rendered separately from collision, so oceans and swamp pools
-    // look like water while the existing terrain/cave physics stay stable.
-    for (
-        let x = minX;
-        x <= maxX;
-        x++
-    ) {
-        for (
-            let z = minZ;
-            z <= maxZ;
-            z++
-        ) {
-            const biome =
-                biomeAt(
-                    x,
-                    z
-                );
-
-            const surface =
-                terrainHeight(
-                    x,
-                    z
-                );
-
-            const waterTop =
-                biome ===
-                "ocean"
-                    ? SEA_LEVEL
-                    : biome ===
-                    "swamp"
-                    &&
-                    hash2(
-                        x,
-                        z,
-                        1710
-                    ) <
-                    0.22
-                        ? surface +
-                        1
-                        : null;
-
-            if (
-                waterTop ===
-                null
-            ) {
-                continue;
-            }
-
-            // One top surface per column. The former stacked transparent water
-            // cubes exposed their insides and made oceans look like a glitchy
-            // grid of water walls.
-            put(
-                x,
-                waterTop,
-                z,
-                "water"
-            );
         }
     }
 
@@ -3057,6 +3033,70 @@ function createMaterials() {
                     ],
 
                     76
+                )
+        });
+
+    materials.redwoodWood =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#7a3827",
+
+                    [
+                        "#a95032",
+                        "#4b211b",
+                        "#c2653d"
+                    ],
+
+                    34
+                )
+        });
+
+    materials.redwoodLeaves =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#274c35",
+
+                    [
+                        "#416b47",
+                        "#163124",
+                        "#5c8052"
+                    ],
+
+                    72
+                )
+        });
+
+    materials.blackwoodWood =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#211b2d",
+
+                    [
+                        "#3d2f52",
+                        "#0e0c16",
+                        "#554068"
+                    ],
+
+                    38
+                )
+        });
+
+    materials.blackwoodLeaves =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#151c2b",
+
+                    [
+                        "#28374b",
+                        "#080b13",
+                        "#35445b"
+                    ],
+
+                    78
                 )
         });
 
@@ -4003,6 +4043,46 @@ function itemIcon(
         blockIcon(
             "#2e6d2c",
             "#4a9141"
+        );
+    }
+
+    else if (
+        type ===
+        "redwoodWood"
+    ) {
+        blockIcon(
+            "#7a3827",
+            "#c2653d"
+        );
+    }
+
+    else if (
+        type ===
+        "redwoodLeaves"
+    ) {
+        blockIcon(
+            "#274c35",
+            "#5c8052"
+        );
+    }
+
+    else if (
+        type ===
+        "blackwoodWood"
+    ) {
+        blockIcon(
+            "#211b2d",
+            "#554068"
+        );
+    }
+
+    else if (
+        type ===
+        "blackwoodLeaves"
+    ) {
+        blockIcon(
+            "#151c2b",
+            "#35445b"
         );
     }
 
@@ -5460,11 +5540,25 @@ function updateSurvivalHud() {
         hunger
     );
 
+    paint(
+        airMeter,
+        air *
+        2
+    );
+
     healthMeter.label.textContent =
         `HEALTH ${health}`;
 
     hungerMeter.label.textContent =
         `HUNGER ${hunger}`;
+
+    airMeter.label.textContent =
+        `AIR ${Math.ceil(air)}`;
+
+    airMeter.row.style.display =
+        isUnderwater
+            ? "flex"
+            : "none";
 }
 
 function showGameOver(
@@ -5510,6 +5604,15 @@ function respawnFromGameOver() {
 
     hunger =
         MAX_HUNGER;
+
+    air =
+        MAX_AIR;
+
+    airDamageTimer =
+        0;
+
+    isUnderwater =
+        false;
 
     verticalVelocity =
         0;
@@ -5657,6 +5760,77 @@ function updateSurvival(
         regenTimer =
             0;
     }
+}
+
+function updateSwimmingState(
+    delta
+) {
+    const surface =
+        waterSurfaceAt(
+            camera.position.x,
+            camera.position.z
+        );
+
+    isUnderwater =
+        surface !==
+        null
+        &&
+        camera.position.y <
+        surface -
+        0.05;
+
+    if (
+        isUnderwater
+    ) {
+        air =
+            Math.max(
+                0,
+                air -
+                delta
+            );
+
+        if (
+            air <=
+            0
+        ) {
+            airDamageTimer +=
+                delta;
+
+            if (
+                airDamageTimer >=
+                1
+            ) {
+                airDamageTimer =
+                    0;
+
+                takeDamage(
+                    2
+                );
+            }
+        }
+    }
+
+    else {
+        air =
+            Math.min(
+                MAX_AIR,
+                air +
+                delta *
+                2.5
+            );
+
+        airDamageTimer =
+            0;
+    }
+
+    updateSurvivalHud();
+
+    return {
+        isSwimming:
+            isUnderwater,
+
+        surface
+    };
 }
 
 function eatSelectedFood() {
@@ -8242,6 +8416,14 @@ function updateMovement(
         return;
     }
 
+    const waterState =
+        updateSwimmingState(
+            delta
+        );
+
+    const swimming =
+        waterState.isSwimming;
+
     const forward =
         new THREE.Vector3(
             -Math.sin(
@@ -8309,7 +8491,12 @@ function updateMovement(
         m
             .normalize()
             .multiplyScalar(
-                MOVE_SPEED *
+                (
+                    swimming
+                        ? MOVE_SPEED *
+                        0.55
+                        : MOVE_SPEED
+                ) *
                 delta
             );
 
@@ -8329,14 +8516,66 @@ function updateMovement(
     onGround =
         false;
 
-    verticalVelocity -=
-        GRAVITY *
-        delta;
+    if (
+        swimming
+    ) {
+        const dive =
+            keys.ShiftLeft
+            ||
+            keys.ShiftRight;
 
-    moveVertical(
-        verticalVelocity *
-        delta
-    );
+        const swimInput =
+            keys.Space
+                ? 1
+                : dive
+                    ? -1
+                    : 0;
+
+        if (
+            swimInput
+        ) {
+            verticalVelocity =
+                swimInput *
+                SWIM_SPEED;
+        }
+
+        else {
+            const floatHeight =
+                waterState.surface -
+                SWIM_SURFACE_OFFSET;
+
+            verticalVelocity =
+                clamp(
+                    (
+                        floatHeight -
+                        camera.position.y
+                    ) *
+                    4,
+
+                    -SWIM_SPEED *
+                    0.55,
+
+                    SWIM_SPEED *
+                    0.55
+                );
+        }
+
+        moveVertical(
+            verticalVelocity *
+            delta
+        );
+    }
+
+    else {
+        verticalVelocity -=
+            GRAVITY *
+            delta;
+
+        moveVertical(
+            verticalVelocity *
+            delta
+        );
+    }
 
     if (
         camera.position.y <
@@ -8472,6 +8711,12 @@ function miningTime(
     if (
         blockType ===
         "leaves"
+        ||
+        blockType ===
+        "redwoodLeaves"
+        ||
+        blockType ===
+        "blackwoodLeaves"
     ) {
         return 0.45;
     }
@@ -8492,6 +8737,12 @@ function miningTime(
         ||
         blockType ===
         "craftingWood"
+        ||
+        blockType ===
+        "redwoodWood"
+        ||
+        blockType ===
+        "blackwoodWood"
     ) {
         return isAxe(
             tool
