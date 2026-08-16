@@ -5211,6 +5211,263 @@ function addBlock(
 const iconCache =
     new Map();
 
+// Inventory art is deliberately drawn as chunky pixel art.  Keeping it in code
+// means every icon stays sharp at any UI scale and does not need image files.
+function drawImprovedItemIcon(x, type) {
+    const px = (color, left, top, width = 1, height = 1) => {
+        x.fillStyle = color;
+        x.fillRect(left, top, width, height);
+    };
+
+    const cube = (front, top, side, flecks = [], cap = null) => {
+        px("#151515", 1, 4, 12, 11);
+        px(front, 2, 5, 10, 9);
+        px(side, 12, 5, 2, 9);
+        px(top, 3, 2, 9, 3);
+        px(top, 2, 3, 11, 2);
+        px("rgba(255,255,255,.20)", 3, 5, 9, 1);
+        px("rgba(0,0,0,.22)", 2, 13, 10, 1);
+
+        if (cap) {
+            px(cap, 2, 2, 11, 3);
+            px("rgba(255,255,255,.20)", 3, 2, 8, 1);
+        }
+
+        for (const [left, top, width = 1, height = 1, color] of flecks) {
+            px(color, left, top, width, height);
+        }
+    };
+
+    const rock = (base, shine, speck) => {
+        px("#131313", 2, 5, 12, 8);
+        px(base, 3, 4, 8, 10);
+        px(base, 2, 7, 11, 5);
+        px(shine, 4, 5, 4, 2);
+        px(shine, 3, 8, 2, 2);
+        px(speck, 9, 8, 2, 3);
+        px("rgba(0,0,0,.28)", 5, 12, 6, 1);
+    };
+
+    const toolColors = {
+        wood: ["#a36d3b", "#e0ab62"],
+        stone: ["#7b8084", "#b7bdc0"],
+        iron: ["#aebbc1", "#edf6f8"],
+        diamond: ["#31cfc9", "#b9fff8"]
+    };
+
+    const toolTier = type.startsWith("diamond")
+        ? toolColors.diamond
+        : type.startsWith("iron")
+            ? toolColors.iron
+            : type.startsWith("stone")
+                ? toolColors.stone
+                : toolColors.wood;
+
+    if (type === "grass") {
+        cube("#754a2e", "#65b748", "#4c8f37", [
+            [4, 7, 2, 1, "#9b6940"], [9, 8, 1, 2, "#4f8d37"],
+            [6, 11, 2, 1, "#9b6940"], [11, 12, 1, 1, "#3a722d"]
+        ], "#5eb440");
+    } else if (type === "dirt") {
+        cube("#71462d", "#93613d", "#51301f", [
+            [4, 7, 1, 1, "#ae7448"], [9, 8, 2, 1, "#543220"],
+            [6, 11, 1, 1, "#b37849"], [11, 12, 1, 1, "#4c2d1e"]
+        ]);
+    } else if (type === "sand") {
+        cube("#d1b86e", "#eed98d", "#a98c4c", [
+            [4, 7, 1, 1, "#f5e5a0"], [9, 8, 1, 1, "#a98d4d"],
+            [6, 11, 2, 1, "#ead183"], [11, 12, 1, 1, "#a98d4d"]
+        ]);
+    } else if (type === "gravel") {
+        cube("#777a78", "#aeb1ac", "#565957", [
+            [4, 7, 2, 1, "#babcb4"], [9, 8, 1, 2, "#494c4b"],
+            [6, 11, 1, 1, "#b7b8b1"], [11, 12, 1, 1, "#444746"]
+        ]);
+    } else if (type === "clay") {
+        cube("#a96655", "#dd9b7f", "#7d463b", [
+            [4, 7, 2, 1, "#db9b7c"], [9, 8, 1, 1, "#7f473b"],
+            [6, 11, 1, 2, "#cf876e"]
+        ]);
+    } else if (type === "sandstone") {
+        cube("#bb995b", "#e3c87d", "#8c6d3d", [
+            [2, 8, 10, 1, "#997641"], [5, 6, 1, 2, "#ead188"],
+            [8, 10, 1, 3, "#8e6c3d"]
+        ]);
+    } else if (type === "brick") {
+        cube("#9d4937", "#cf7358", "#703026", [
+            [2, 8, 10, 1, "#5e2922"], [7, 5, 1, 3, "#5e2922"],
+            [5, 9, 1, 4, "#5e2922"], [10, 9, 1, 4, "#5e2922"]
+        ]);
+    } else if (type === "wood" || type === "redwoodWood" || type === "blackwoodWood") {
+        const palette = type === "redwoodWood"
+            ? ["#8f422b", "#ce7446", "#5f261c"]
+            : type === "blackwoodWood"
+                ? ["#30243f", "#695279", "#1e1729"]
+                : ["#754727", "#b87843", "#4b2b19"];
+        cube(palette[0], palette[1], palette[2], [
+            [3, 7, 1, 5, palette[2]], [7, 6, 1, 7, palette[2]],
+            [10, 6, 1, 6, palette[2]], [4, 3, 5, 1, "rgba(255,255,255,.20)"]
+        ]);
+        px(palette[2], 5, 2, 4, 1);
+        px(palette[2], 6, 3, 2, 1);
+    } else if (type === "leaves" || type === "redwoodLeaves" || type === "blackwoodLeaves") {
+        const palette = type === "redwoodLeaves"
+            ? ["#35543a", "#6e9a63", "#203626"]
+            : type === "blackwoodLeaves"
+                ? ["#1d273a", "#455878", "#121928"]
+                : ["#347a33", "#68ae52", "#205125"];
+        cube(palette[0], palette[1], palette[2], [
+            [4, 7, 2, 2, palette[1]], [9, 6, 2, 1, palette[2]],
+            [6, 11, 2, 1, palette[1]], [11, 11, 1, 2, palette[2]]
+        ]);
+    } else if (type === "stone") {
+        cube("#70777c", "#a5adb0", "#4d5357", [
+            [4, 7, 2, 1, "#a9b1b4"], [9, 8, 1, 2, "#474d51"],
+            [6, 11, 1, 1, "#b4babc"], [11, 12, 1, 1, "#444a4e"]
+        ]);
+    } else if (type === "craftingWood") {
+        cube("#ad7040", "#e1a96a", "#774523", [
+            [2, 8, 10, 1, "#75431f"], [2, 11, 10, 1, "#75431f"],
+            [6, 5, 1, 3, "#75431f"], [9, 9, 1, 3, "#75431f"]
+        ]);
+    } else if (type === "furnace") {
+        cube("#555b60", "#8e969a", "#34393d", [
+            [4, 7, 6, 5, "#1b1d1f"], [5, 10, 4, 2, "#ee7d25"],
+            [4, 6, 6, 1, "#aeb5b6"], [2, 12, 2, 1, "#25282a"]
+        ]);
+    } else if (type === "door") {
+        px("#151515", 3, 1, 10, 14);
+        px("#9b5b30", 4, 2, 8, 12);
+        px("#d19151", 5, 3, 2, 10);
+        px("#5b301b", 8, 2, 1, 12);
+        px("#5b301b", 4, 8, 8, 1);
+        px("#f5d163", 10, 10, 1, 2);
+    } else if (type === "torch") {
+        px("#1a1a1a", 6, 7, 4, 8);
+        px("#75421e", 7, 7, 2, 8);
+        px("#bd6e2a", 8, 8, 1, 6);
+        px("#ff7e2e", 5, 2, 6, 6);
+        px("#ffc750", 6, 1, 4, 5);
+        px("#fff3a5", 7, 2, 2, 3);
+    } else if (type === "coal") {
+        rock("#252a30", "#626a71", "#080a0d");
+    } else if (type === "rawIron" || type === "rawGold") {
+        const gold = type === "rawGold";
+        rock(gold ? "#80672b" : "#85584b", gold ? "#e4bd50" : "#d2a38c", gold ? "#594719" : "#57382f");
+    } else if (type === "iron") {
+        px("#172024", 3, 3, 10, 11);
+        px("#aebfc7", 4, 4, 8, 3);
+        px("#78909a", 4, 7, 8, 2);
+        px("#d8edf3", 5, 5, 5, 1);
+        px("#95aab3", 4, 10, 8, 3);
+    } else if (type === "gold") {
+        px("#3d2b10", 3, 3, 10, 11);
+        px("#e8b92d", 4, 4, 8, 3);
+        px("#a47717", 4, 7, 8, 2);
+        px("#fff075", 5, 5, 5, 1);
+        px("#d4a322", 4, 10, 8, 3);
+    } else if (type === "diamond" || type === "crystal") {
+        const diamond = type === "diamond";
+        const base = diamond ? "#26c9cf" : "#8456d7";
+        const light = diamond ? "#c5fff8" : "#edc8ff";
+        const shade = diamond ? "#117985" : "#4d2d91";
+        px("#141525", 4, 2, 8, 12);
+        px(base, 5, 3, 6, 10);
+        px(base, 3, 6, 10, 4);
+        px(light, 6, 4, 3, 3);
+        px(light, 4, 7, 2, 2);
+        px(shade, 9, 8, 2, 3);
+        px(shade, 7, 11, 2, 2);
+    } else if (type === "sticks") {
+        px("#362113", 3, 2, 2, 12);
+        px("#9f6737", 4, 2, 2, 12);
+        px("#3b2515", 9, 1, 2, 13);
+        px("#bf7b43", 10, 1, 1, 13);
+    } else if (type.endsWith("Axe")) {
+        px("#2b1a10", 5, 6, 3, 9);
+        px("#885129", 6, 6, 2, 8);
+        px("#4d5257", 7, 2, 6, 6);
+        px(toolTier[0], 8, 2, 5, 5);
+        px(toolTier[1], 9, 2, 3, 2);
+    } else if (type.endsWith("Pickaxe")) {
+        px("#2b1a10", 6, 4, 3, 11);
+        px("#885129", 7, 5, 2, 9);
+        px("#34383b", 2, 2, 12, 4);
+        px(toolTier[0], 2, 2, 12, 2);
+        px(toolTier[0], 3, 4, 3, 2);
+        px(toolTier[0], 10, 4, 3, 2);
+        px(toolTier[1], 4, 2, 6, 1);
+    } else if (type.endsWith("Sword")) {
+        px("#302014", 6, 10, 3, 5);
+        px("#92572c", 7, 10, 2, 5);
+        px("#d9aa54", 4, 10, 8, 2);
+        px(toolTier[0], 7, 2, 2, 8);
+        px(toolTier[0], 6, 4, 4, 5);
+        px(toolTier[1], 7, 2, 1, 6);
+    } else if (type.endsWith("Armor")) {
+        const plate = type.startsWith("diamond") ? ["#29c8c5", "#b9fff8"]
+            : type.startsWith("gold") ? ["#dbaa28", "#fff07a"]
+                : type.startsWith("iron") ? ["#abb9c0", "#effaff"]
+                    : type.startsWith("stone") ? ["#7d868a", "#bdc4c5"]
+                        : ["#96613a", "#d59a61"];
+        px("#17191a", 3, 3, 10, 11);
+        px(plate[0], 5, 2, 6, 2);
+        px(plate[0], 4, 4, 8, 8);
+        px(plate[0], 2, 5, 2, 6);
+        px(plate[0], 12, 5, 2, 6);
+        px(plate[1], 5, 4, 2, 7);
+        px("rgba(0,0,0,.30)", 9, 4, 2, 8);
+    } else if (type === "shield") {
+        px("#1a1510", 3, 2, 10, 10);
+        px("#80451f", 4, 3, 8, 9);
+        px("#b7773e", 5, 3, 2, 7);
+        px("#d6dde0", 7, 4, 2, 6);
+        px("#4d575b", 8, 5, 1, 5);
+    } else if (type === "bow") {
+        px("#3b2515", 3, 2, 2, 12);
+        px("#9f6231", 4, 2, 2, 12);
+        px("#3b2515", 11, 3, 2, 10);
+        px("#b6733a", 10, 3, 2, 10);
+        px("#f5ead4", 7, 2, 1, 12);
+    } else if (type === "arrow") {
+        px("#60401f", 7, 2, 2, 12);
+        px("#c28a4e", 8, 3, 1, 10);
+        px("#d8e2e2", 6, 1, 4, 3);
+        px("#e9f1f1", 5, 1, 6, 1);
+        px("#d24d3e", 5, 12, 2, 2);
+        px("#d24d3e", 9, 12, 2, 2);
+    } else if (type === "flintlockPistol" || type === "flintlockRifle") {
+        const rifle = type === "flintlockRifle";
+        px("#17191a", 2, rifle ? 6 : 7, rifle ? 13 : 10, 4);
+        px("#8d9aa0", 3, rifle ? 6 : 7, rifle ? 12 : 9, 2);
+        px("#d8e5e8", 4, rifle ? 6 : 7, rifle ? 8 : 6, 1);
+        px("#75411f", 4, rifle ? 9 : 9, rifle ? 6 : 5, 4);
+        px("#ae6b37", 5, rifle ? 9 : 9, rifle ? 4 : 3, 2);
+        px("#3b2515", rifle ? 8 : 7, 10, 3, 4);
+        if (rifle) px("#aeb8bd", 13, 6, 2, 1);
+    } else if (type === "musketBall") {
+        px("#151515", 4, 4, 8, 8);
+        px("#596166", 5, 3, 6, 10);
+        px("#aab8bd", 5, 5, 3, 3);
+        px("#31383d", 9, 9, 2, 2);
+    } else if (["beef", "pork", "mutton", "chicken"].includes(type)) {
+        const palette = type === "beef" ? ["#8b382f", "#f0b2a0"]
+            : type === "pork" ? ["#d3777c", "#ffd0ca"]
+                : type === "mutton" ? ["#91554b", "#e8b6a6"]
+                    : ["#e0c78f", "#fff0c8"];
+        px("#2b1c17", 3, 4, 10, 8);
+        px(palette[0], 4, 4, 8, 8);
+        px(palette[1], 9, 5, 3, 3);
+        px("#fff5da", 3, 9, 3, 4);
+        px("#d5b98e", 2, 10, 2, 2);
+        px("rgba(0,0,0,.22)", 5, 10, 5, 2);
+    } else {
+        return false;
+    }
+
+    return true;
+}
+
 function itemIcon(
     type
 ) {
@@ -5234,6 +5491,12 @@ function itemIcon(
 
     x.imageSmoothingEnabled =
         false;
+
+    if (drawImprovedItemIcon(x, type)) {
+        const url = c.toDataURL();
+        iconCache.set(type, url);
+        return url;
+    }
 
     const blockIcon =
         (
