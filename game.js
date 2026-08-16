@@ -606,18 +606,68 @@ const axeTier = item =>
 // ============================================================
 // DAY / NIGHT
 // ============================================================
-const DAY_LENGTH = 240;
+const DAY_DURATION_SECONDS =
+    10 *
+    60;
+
+const NIGHT_DURATION_SECONDS =
+    7.5 *
+    60;
+
+const WORLD_CYCLE_SECONDS =
+    DAY_DURATION_SECONDS +
+    NIGHT_DURATION_SECONDS;
 
 let worldTime = 0.28;
+
+// Start shortly after sunrise, matching the old default world time.
+let worldCycleSeconds =
+    (
+        (
+            worldTime -
+            0.25
+        ) /
+        0.5
+    ) *
+    DAY_DURATION_SECONDS;
+
 let isNight = false;
 
 function updateDayNight(delta) {
-    worldTime =
+    worldCycleSeconds =
         (
-            worldTime +
-            delta /
-            DAY_LENGTH
-        ) % 1;
+            worldCycleSeconds +
+            delta
+        ) %
+        WORLD_CYCLE_SECONDS;
+
+    isNight =
+        worldCycleSeconds >=
+        DAY_DURATION_SECONDS;
+
+    const phase =
+        isNight
+            ? (
+                worldCycleSeconds -
+                DAY_DURATION_SECONDS
+            ) /
+            NIGHT_DURATION_SECONDS
+            : worldCycleSeconds /
+            DAY_DURATION_SECONDS;
+
+    // Daylight takes game-time 06:00–18:00; night takes 18:00–06:00.
+    // Both spans use their own real-time duration, so the requested 10:7.5
+    // ratio is exact instead of being an approximation from sky brightness.
+    worldTime =
+        isNight
+            ? (
+                0.75 +
+                phase *
+                0.5
+            ) % 1
+            : 0.25 +
+            phase *
+            0.5;
 
     const angle =
         worldTime *
@@ -642,10 +692,6 @@ function updateDayNight(delta) {
             0,
             1
         );
-
-    isNight =
-        daylight <
-        0.22;
 
     sunLight.position.set(
         Math.cos(angle) *
@@ -945,6 +991,12 @@ function waterSurfaceAt(
     const blockX = Math.round(x);
     const blockZ = Math.round(z);
 
+    const floorY =
+        terrainHeight(
+            blockX,
+            blockZ
+        );
+
     if (
         !swampPoolAt(
             blockX,
@@ -956,12 +1008,38 @@ function waterSurfaceAt(
             blockZ
         )
         ||
-        terrainHeight(
-            blockX,
-            blockZ
-        ) >= SWAMP_WATER_Y
+        // A puddle is exactly one block deep. Allowing it over much lower
+        // land exposed the cave walls below and made fake ocean trenches.
+        floorY !==
+        SWAMP_WATER_Y -
+        1
     ) {
         return null;
+    }
+
+    // Do not paint water across a ledge or cave opening. Every nearby tile
+    // must have the same shallow floor and solid space directly under water.
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+            const checkX = blockX + dx;
+            const checkZ = blockZ + dz;
+
+            if (
+                terrainHeight(
+                    checkX,
+                    checkZ
+                ) !==
+                floorY
+                ||
+                insideEntrance(
+                    checkX,
+                    SWAMP_WATER_Y,
+                    checkZ
+                )
+            ) {
+                return null;
+            }
+        }
     }
 
     // Water uses a flat plane positioned half a block above its stored Y.
@@ -6442,9 +6520,33 @@ function addEntityPart(
     return mesh;
 }
 
+function saveEntityBasePose(
+    group
+) {
+    // Animation always returns each mesh to this snapshot before moving legs.
+    group.traverse(
+        part => {
+            if (!part.isMesh) {
+                return;
+            }
+
+            part.userData.basePose = {
+                x: part.position.x,
+                y: part.position.y,
+                z: part.position.z,
+                rotationX: part.rotation.x,
+                rotationY: part.rotation.y,
+                rotationZ: part.rotation.z
+            };
+        }
+    );
+}
+
 function buildAnimalModel(
     type,
-    id
+    id,
+    mimicDisguise =
+        false
 ) {
     const g =
         new THREE.Group();
@@ -7217,25 +7319,36 @@ function buildAnimalModel(
         const shirt = 0x090a0d;
         const pants = 0x141826;
 
-        // Steve-shaped at a distance, but wrong up close: ashen skin,
-        // hollow eyes, a far-too-wide mouth, and long black-shirted arms.
+        // The Mimic keeps its unsettling black-shirt body in every light.
+        // Only its front face puts on a normal Steve mask during daytime.
         part({ x: 0.62, y: 0.64, z: 0.54 }, skin, { x: 0, y: 2.08, z: 0.02 });
         part({ x: 0.66, y: 0.14, z: 0.56 }, 0x0b090a, { x: 0, y: 2.39, z: 0.02 });
         part({ x: 0.58, y: 0.88, z: 0.34 }, shirt, { x: 0, y: 1.39, z: 0 });
-        part({ x: 0.07, y: 0.52, z: 0.025 }, 0x5f1519, { x: 0, y: 1.45, z: 0.185 });
 
-        for (const eyeX of [-0.16, 0.16]) {
-            part({ x: 0.17, y: 0.16, z: 0.03 }, 0x050405, { x: eyeX, y: 2.17, z: 0.301 });
-            part({ x: 0.055, y: 0.09, z: 0.035 }, 0xf4f1e8, { x: eyeX, y: 2.17, z: 0.322 });
-            part({ x: 0.020, y: 0.060, z: 0.040 }, 0xd11d25, { x: eyeX, y: 2.17, z: 0.343 });
+        if (mimicDisguise) {
+            part({ x: 0.54, y: 0.54, z: 0.032 }, 0xb97862, { x: 0, y: 2.08, z: 0.304 });
+            for (const eyeX of [-0.13, 0.13]) {
+                part({ x: 0.09, y: 0.08, z: 0.025 }, 0xeaf3ff, { x: eyeX, y: 2.10, z: 0.327 });
+                part({ x: 0.035, y: 0.07, z: 0.03 }, 0x234f91, { x: eyeX, y: 2.10, z: 0.349 });
+            }
         }
 
-        part({ x: 0.43, y: 0.14, z: 0.032 }, 0x070405, { x: 0, y: 1.95, z: 0.306 });
-        for (const toothX of [-0.15, -0.075, 0, 0.075, 0.15]) {
-            part({ x: 0.038, y: 0.09, z: 0.035 }, 0xe8e2d2, { x: toothX, y: 1.98, z: 0.332 });
+        else {
+            part({ x: 0.07, y: 0.52, z: 0.025 }, 0x5f1519, { x: 0, y: 1.45, z: 0.185 });
+
+            for (const eyeX of [-0.16, 0.16]) {
+                part({ x: 0.17, y: 0.16, z: 0.03 }, 0x050405, { x: eyeX, y: 2.17, z: 0.301 });
+                part({ x: 0.055, y: 0.09, z: 0.035 }, 0xf4f1e8, { x: eyeX, y: 2.17, z: 0.322 });
+                part({ x: 0.020, y: 0.060, z: 0.040 }, 0xd11d25, { x: eyeX, y: 2.17, z: 0.343 });
+            }
+
+            part({ x: 0.43, y: 0.14, z: 0.032 }, 0x070405, { x: 0, y: 1.95, z: 0.306 });
+            for (const toothX of [-0.15, -0.075, 0, 0.075, 0.15]) {
+                part({ x: 0.038, y: 0.09, z: 0.035 }, 0xe8e2d2, { x: toothX, y: 1.98, z: 0.332 });
+            }
+            part({ x: 0.055, y: 0.20, z: 0.03 }, 0x2b1113, { x: -0.26, y: 2.01, z: 0.309, rotation: { z: -0.48 } });
+            part({ x: 0.055, y: 0.17, z: 0.03 }, 0x2b1113, { x: 0.25, y: 2.08, z: 0.309, rotation: { z: 0.52 } });
         }
-        part({ x: 0.055, y: 0.20, z: 0.03 }, 0x2b1113, { x: -0.26, y: 2.01, z: 0.309, rotation: { z: -0.48 } });
-        part({ x: 0.055, y: 0.17, z: 0.03 }, 0x2b1113, { x: 0.25, y: 2.08, z: 0.309, rotation: { z: 0.52 } });
 
         for (const armX of [-0.42, 0.42]) {
             part({ x: 0.20, y: 0.76, z: 0.18 }, shirt, { x: armX, y: 1.40, z: 0 });
@@ -7839,26 +7952,17 @@ function spawnEntityForChunk(
     const group =
         buildAnimalModel(
             type,
-            id
+            id,
+            type ===
+            "mimic"
+            &&
+            !isNight
         );
 
     // Save each part's default pose once. The entity update loop can then
     // animate walking without permanently twisting the model every frame.
-    group.traverse(
-        part => {
-            if (!part.isMesh) {
-                return;
-            }
-
-            part.userData.basePose = {
-                x: part.position.x,
-                y: part.position.y,
-                z: part.position.z,
-                rotationX: part.rotation.x,
-                rotationY: part.rotation.y,
-                rotationZ: part.rotation.z
-            };
-        }
+    saveEntityBasePose(
+        group
     );
 
     group.position.set(
@@ -7886,6 +7990,12 @@ function spawnEntityForChunk(
         id,
         type,
         group,
+
+        mimicDisguise:
+            type ===
+            "mimic"
+            &&
+            !isNight,
 
         health:
             stats.health,
@@ -8612,6 +8722,61 @@ function animateEntityModel(
     }
 }
 
+function refreshMimicAppearance(
+    e
+) {
+    if (
+        e.type !==
+        "mimic"
+    ) {
+        return;
+    }
+
+    const shouldDisguise =
+        !isNight;
+
+    if (
+        e.mimicDisguise ===
+        shouldDisguise
+    ) {
+        return;
+    }
+
+    // Keep the entity's position, health, and AI. Only exchange the visual
+    // body and its hit meshes when day changes to night (or back again).
+    for (const part of [...e.group.children]) {
+        entityHitMeshes.delete(
+            part
+        );
+
+        e.group.remove(
+            part
+        );
+
+        part.geometry.dispose();
+    }
+
+    const replacement =
+        buildAnimalModel(
+            "mimic",
+            e.id,
+            shouldDisguise
+        );
+
+    for (const part of [...replacement.children]) {
+        e.group.add(
+            part
+        );
+    }
+
+    saveEntityBasePose(
+        e.group
+    );
+
+    e.mimicDisguise =
+        shouldDisguise;
+}
+
 function updateEntities(
     delta
 ) {
@@ -8627,6 +8792,10 @@ function updateEntities(
             ...entities.values()
         ]
     ) {
+        refreshMimicAppearance(
+            e
+        );
+
         e.attackCooldown =
             Math.max(
                 0,
