@@ -60,6 +60,79 @@ const itemLabel = css(document.createElement("div"), {
 
 gameContainer.appendChild(itemLabel);
 
+// The first 3D hand clipped into the camera on some screens.  This is a
+// compact, pixel-clean screen-space hand instead: it stays in the corner and
+// still visibly holds the selected hotbar item.
+const handHud = css(document.createElement("div"), {
+    position: "fixed",
+    right: "20px",
+    bottom: "16px",
+    width: "112px",
+    height: "118px",
+    display: "none",
+    pointerEvents: "none",
+    zIndex: "18",
+    transformOrigin: "right bottom",
+    willChange: "transform"
+});
+
+const handHudItem = css(document.createElement("div"), {
+    position: "absolute",
+    left: "3px",
+    bottom: "48px",
+    width: "52px",
+    height: "52px",
+    display: "none",
+    backgroundSize: "100% 100%",
+    backgroundRepeat: "no-repeat",
+    imageRendering: "pixelated",
+    filter: "drop-shadow(3px 4px 0 rgba(0,0,0,.50))",
+    transformOrigin: "right bottom"
+});
+
+const handHudSleeve = css(document.createElement("div"), {
+    position: "absolute",
+    right: "15px",
+    bottom: "19px",
+    width: "40px",
+    height: "66px",
+    background: "linear-gradient(90deg, #183755 0 18%, #3c75a7 18% 82%, #25547f 82%)",
+    border: "4px solid #11283e",
+    boxSizing: "border-box",
+    boxShadow: "inset 4px 0 rgba(255,255,255,.14), 4px 4px 0 rgba(0,0,0,.38)",
+    transform: "rotate(-20deg)",
+    transformOrigin: "center bottom"
+});
+
+const handHudHand = css(document.createElement("div"), {
+    position: "absolute",
+    right: "9px",
+    bottom: "2px",
+    width: "42px",
+    height: "32px",
+    background: "linear-gradient(90deg, #a9623d 0 16%, #e6a271 16% 82%, #bf754d 82%)",
+    border: "4px solid #663821",
+    boxSizing: "border-box",
+    boxShadow: "inset 4px 3px rgba(255,231,199,.25), 4px 4px 0 rgba(0,0,0,.38)",
+    transform: "rotate(-20deg)",
+    transformOrigin: "center top"
+});
+
+const handHudFingers = css(document.createElement("div"), {
+    position: "absolute",
+    right: "14px",
+    bottom: "7px",
+    width: "23px",
+    height: "4px",
+    background: "#8f4e30",
+    boxShadow: "0 -7px #b66b45",
+    transform: "rotate(-20deg)",
+    transformOrigin: "center top"
+});
+
+handHud.append(handHudItem, handHudSleeve, handHudHand, handHudFingers);
+gameContainer.appendChild(handHud);
+
 const lootToast = css(document.createElement("div"), {
     position: "fixed",
     left: "50%",
@@ -7793,6 +7866,8 @@ function setPaused(
     if (firstPersonRig) {
         firstPersonRig.visible = !paused;
     }
+
+    handHud.style.display = paused ? "none" : "block";
 }
 
 function resumeFromPause() {
@@ -12607,8 +12682,18 @@ function clearHeldItem() {
 }
 
 function buildHeldItem(type) {
-    clearHeldItem();
     heldItemKey = type || null;
+
+    handHudItem.style.display = type ? "block" : "none";
+    handHudItem.style.backgroundImage = type ? `url(${itemIcon(type)})` : "none";
+    handHudItem.title = type ? nameOf(type) : "";
+
+    // The old world-space item mesh made a huge perspective wedge on narrow
+    // screens.  The HUD icon is crisp, matches the hotbar exactly, and is
+    // always the same friendly size.
+    return;
+
+    clearHeldItem();
 
     if (!type || !heldItemRig) {
         return;
@@ -12734,27 +12819,11 @@ function buildHeldItem(type) {
 }
 
 function createFirstPersonRig() {
+    // Keep these small state groups for the hand animation code, but do not
+    // attach them to the camera.  The visual hand is the stable HUD above.
     firstPersonRig = new THREE.Group();
-    firstPersonRig.position.set(0.46, -0.48, -0.72);
-    firstPersonRig.rotation.set(0.10, -0.16, -0.08);
-    firstPersonRig.renderOrder = 999;
-
     firstPersonArm = new THREE.Group();
-    firstPersonRig.add(firstPersonArm);
-
-    // A little blue sleeve plus a blocky hand means the player is never just
-    // a floating camera anymore, including when their hotbar is empty.
-    firstPersonBox(firstPersonArm, [0.20, 0.34, 0.20], [0.04, 0.08, 0.12], 0x3f74a5, [0.10, 0, -0.16]);
-    firstPersonBox(firstPersonArm, [0.18, 0.25, 0.18], [0.01, -0.16, 0.03], 0xe6a36f, [0.10, 0, -0.16]);
-    firstPersonBox(firstPersonArm, [0.22, 0.14, 0.20], [-0.02, -0.33, -0.07], 0xf0b47e, [0.10, 0, -0.16]);
-
     heldItemRig = new THREE.Group();
-    heldItemRig.position.set(-0.11, -0.23, -0.17);
-    heldItemRig.rotation.set(0.18, -0.36, 0.08);
-    firstPersonArm.add(heldItemRig);
-
-    camera.add(firstPersonRig);
-    scene.add(camera);
     buildHeldItem(selectedItem());
 }
 
@@ -12763,7 +12832,7 @@ function swingPlayerHand(strength = 1) {
 }
 
 function updateFirstPersonRig(delta) {
-    if (!firstPersonRig || !firstPersonArm || !heldItemRig) {
+    if (!firstPersonRig) {
         return;
     }
 
@@ -12776,14 +12845,14 @@ function updateFirstPersonRig(delta) {
     handBobTime += delta;
 
     const moving = onGround && (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD);
-    const bob = moving ? Math.sin(handBobTime * 11) * 0.009 : 0;
+    const bob = moving ? Math.sin(handBobTime * 10) * 2 : 0;
     const swing = Math.sin((1 - handSwing) * Math.PI) * handSwing;
+    const visible = !gameOver && !craftingOpen && !tradingOpen && !paused;
 
-    firstPersonRig.visible = !gameOver && !craftingOpen && !tradingOpen;
-    firstPersonRig.position.set(0.46, -0.48 + bob, -0.72);
-    firstPersonRig.rotation.set(0.10 + swing * 0.62, -0.16, -0.08 - swing * 0.24);
-    firstPersonArm.rotation.set(0, 0, -0.12 - swing * 0.18);
-    heldItemRig.rotation.set(0.18 - swing * 0.28, -0.36, 0.08 + swing * 0.14);
+    firstPersonRig.visible = visible;
+    handHud.style.display = visible ? "block" : "none";
+    handHud.style.transform = `translateY(${Math.round(bob + swing * 10)}px) rotate(${-3 + swing * 15}deg)`;
+    handHudItem.style.transform = `translateY(${-swing * 5}px) rotate(${-10 - swing * 18}deg)`;
 }
 
 // ============================================================
