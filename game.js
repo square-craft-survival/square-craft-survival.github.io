@@ -1,25 +1,38 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js";
 
-console.log("SQUARE CRAFT SURVIVAL - ENTITIES + TOOLS + SURVIVAL");
+console.log("SQUARE CRAFT SURVIVAL - BIG WORLD UPDATE");
 
-// =====================================================
+// ============================================================
 // HELPERS
-// =====================================================
-
+// ============================================================
+const $ = id => document.getElementById(id);
 const css = (el, styles) => (Object.assign(el.style, styles), el);
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const blockKey = (x, y, z) => `${x},${y},${z}`;
-const chunkKey = (cx, cz) => `${cx},${cz}`;
-const worldToChunk = value => Math.floor(value / CHUNK_SIZE);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const key3 = (x, y, z) => `${x},${y},${z}`;
+const key2 = (x, z) => `${x},${z}`;
 
-// =====================================================
+function hash2(x, z, seed = 0) {
+    const n = Math.sin(x * 127.1 + z * 311.7 + seed * 74.7) * 43758.5453123;
+    return n - Math.floor(n);
+}
+
+function hash3(x, y, z, seed = 0) {
+    const n = Math.sin(x * 157.7 + y * 269.5 + z * 113.5 + seed * 41.3) * 43758.5453123;
+    return n - Math.floor(n);
+}
+
+// ============================================================
 // HTML / HUD
-// =====================================================
+// ============================================================
+const playButton = $("playButton");
+const startScreen = $("startScreen");
+const gameContainer = $("game");
+const hotbar = $("hotbar");
 
-const playButton = document.getElementById("playButton");
-const startScreen = document.getElementById("startScreen");
-const gameContainer = document.getElementById("game");
-const hotbar = document.getElementById("hotbar");
+if (!playButton || !startScreen || !gameContainer || !hotbar) {
+    throw new Error("SCS needs #playButton, #startScreen, #game, and #hotbar in index.html");
+}
 
 gameContainer.style.display = "none";
 hotbar.innerHTML = "";
@@ -30,31 +43,32 @@ for (let i = 0; i < 7; i++) {
     hotbar.appendChild(slot);
 }
 
-const hotbarSlots = Array.from(document.querySelectorAll(".slot"));
+const hotbarSlots = [...document.querySelectorAll(".slot")];
 
-const blockNameLabel = css(document.createElement("div"), {
+const itemLabel = css(document.createElement("div"), {
     position: "fixed",
-    bottom: "95px",
     left: "50%",
+    bottom: "94px",
     transform: "translateX(-50%)",
     color: "white",
-    fontSize: "22px",
     fontWeight: "bold",
-    textShadow: "2px 2px 0 black",
+    fontSize: "20px",
+    textShadow: "2px 2px #000",
     pointerEvents: "none",
     zIndex: "20"
 });
-gameContainer.appendChild(blockNameLabel);
 
-const miningHud = css(document.createElement("div"), {
+gameContainer.appendChild(itemLabel);
+
+const miningBar = css(document.createElement("div"), {
     position: "fixed",
     left: "50%",
     top: "56%",
     transform: "translateX(-50%)",
-    width: "150px",
+    width: "160px",
     height: "14px",
+    background: "rgba(0,0,0,.7)",
     border: "3px solid #111",
-    background: "rgba(0,0,0,0.65)",
     display: "none",
     zIndex: "30",
     pointerEvents: "none"
@@ -63,93 +77,113 @@ const miningHud = css(document.createElement("div"), {
 const miningFill = css(document.createElement("div"), {
     width: "0%",
     height: "100%",
-    background: "white"
+    background: "#eee"
 });
-miningHud.appendChild(miningFill);
-gameContainer.appendChild(miningHud);
+
+miningBar.appendChild(miningFill);
+gameContainer.appendChild(miningBar);
 
 const survivalHud = css(document.createElement("div"), {
     position: "fixed",
-    top: "18px",
-    left: "18px",
-    zIndex: "40",
-    pointerEvents: "none",
+    top: "16px",
+    left: "16px",
     color: "white",
-    textShadow: "2px 2px 0 #000",
-    fontWeight: "bold"
+    fontWeight: "bold",
+    textShadow: "2px 2px #000",
+    zIndex: "40",
+    pointerEvents: "none"
 });
+
 gameContainer.appendChild(survivalHud);
 
-function createMeter(labelText) {
+function makeMeter(name, filled, empty) {
     const row = css(document.createElement("div"), {
         display: "flex",
-        alignItems: "center",
         gap: "8px",
-        marginBottom: "7px"
+        alignItems: "center",
+        marginBottom: "6px"
     });
 
     const label = css(document.createElement("div"), {
-        width: "82px",
-        fontSize: "15px"
+        width: "88px",
+        fontSize: "14px"
     });
-
-    label.textContent = labelText;
 
     const cells = css(document.createElement("div"), {
         display: "flex",
-        gap: "3px"
+        gap: "2px"
     });
 
     const parts = [];
 
     for (let i = 0; i < 10; i++) {
-        const part = css(document.createElement("div"), {
+        const p = css(document.createElement("div"), {
             width: "15px",
             height: "15px",
             border: "2px solid #111",
             boxSizing: "border-box"
         });
 
-        cells.appendChild(part);
-        parts.push(part);
+        p.dataset.filled = filled;
+        p.dataset.empty = empty;
+
+        cells.appendChild(p);
+        parts.push(p);
     }
 
     row.append(label, cells);
     survivalHud.appendChild(row);
 
     return {
-        row,
         label,
         parts
     };
 }
 
-const healthMeter = createMeter("HEALTH");
-const hungerMeter = createMeter("HUNGER");
+const healthMeter = makeMeter("HEALTH", "#b92e2e", "#3a2020");
+const hungerMeter = makeMeter("HUNGER", "#c8872d", "#3d2d1c");
+
+const clockHud = css(document.createElement("div"), {
+    position: "fixed",
+    top: "16px",
+    right: "18px",
+    color: "white",
+    fontSize: "16px",
+    fontWeight: "bold",
+    textShadow: "2px 2px #000",
+    zIndex: "40",
+    pointerEvents: "none"
+});
+
+gameContainer.appendChild(clockHud);
 
 const damageFlash = css(document.createElement("div"), {
     position: "fixed",
     inset: "0",
-    background: "rgba(170,0,0,0.28)",
+    background: "rgba(170,0,0,.28)",
     opacity: "0",
+    transition: "opacity .12s",
     pointerEvents: "none",
-    zIndex: "900",
-    transition: "opacity 0.12s linear"
+    zIndex: "900"
 });
 
 document.body.appendChild(damageFlash);
 
-// =====================================================
+// ============================================================
 // GAME STATE
-// =====================================================
-
+// ============================================================
 let scene;
 let camera;
 let renderer;
 let clock;
 let blockGeometry;
-let materials = {};
 
+let sunLight;
+let ambientLight;
+
+let started = false;
+
+const materials = {};
 const keys = {};
 
 let yaw = 0;
@@ -158,77 +192,94 @@ let verticalVelocity = 0;
 let onGround = false;
 let craftingOpen = false;
 
-const moveSpeed = 7;
-const gravity = 20;
-const jumpPower = 7.5;
+const MOVE_SPEED = 7;
+const GRAVITY = 20;
+const JUMP_POWER = 7.5;
 
-const eyeHeight = 1.7;
-const playerHeight = 1.8;
-const playerRadius = 0.32;
+const EYE_HEIGHT = 1.7;
+const PLAYER_HEIGHT = 1.8;
+const PLAYER_RADIUS = 0.32;
 
-const maxHealth = 20;
-const maxHunger = 20;
+let health = 20;
+let hunger = 20;
 
-let health = maxHealth;
-let hunger = maxHunger;
+const MAX_HEALTH = 20;
+const MAX_HUNGER = 20;
 
 let hungerTimer = 0;
 let starvationTimer = 0;
 let regenTimer = 0;
 
-// =====================================================
+// ============================================================
 // WORLD SETTINGS
-// =====================================================
-
+// ============================================================
 const CHUNK_SIZE = 16;
 const LOAD_DISTANCE = 4;
 
-const FOG_NEAR = 30;
-const FOG_FAR = 46;
+const FOG_NEAR = 42;
+const FOG_FAR = 62;
 
-const bedrockY = -5;
-const maxBuildY = 48;
+const BEDROCK_Y = -12;
+const MAX_BUILD_Y = 64;
 
 const loadedChunks = new Map();
 const chunkEdits = new Map();
 const interactiveMeshes = new Set();
 
-let lastPlayerChunkX = null;
-let lastPlayerChunkZ = null;
+let lastChunkX = null;
+let lastChunkZ = null;
 
-const allBlockTypes = [
+const BLOCKS = [
     "grass",
     "dirt",
     "wood",
     "leaves",
     "stone",
     "craftingWood",
+    "coalOre",
+    "ironOre",
+    "goldOre",
+    "diamondOre",
     "bedrock"
 ];
 
-const placeableTypes = new Set([
+const PLACEABLE = new Set([
     "grass",
     "dirt",
     "wood",
     "leaves",
     "stone",
-    "craftingWood"
+    "craftingWood",
+    "coalOre",
+    "ironOre",
+    "goldOre",
+    "diamondOre"
 ]);
 
-// =====================================================
-// INVENTORY / RECIPES
-// =====================================================
-
-const inventory = {
+const INVENTORY = {
     grass: 0,
     dirt: 0,
     wood: 0,
     leaves: 0,
     stone: 0,
     craftingWood: 0,
+
+    coal: 0,
+    iron: 0,
+    gold: 0,
+    diamond: 0,
+
     sticks: 0,
-    axe: 0,
-    pickaxe: 0,
+
+    woodAxe: 0,
+    woodPickaxe: 0,
+
+    stoneAxe: 0,
+    stonePickaxe: 0,
+
+    ironAxe: 0,
+    ironPickaxe: 0,
+
     beef: 0,
     pork: 0,
     mutton: 0
@@ -244,270 +295,838 @@ const hotbarItems = [
     null
 ];
 
-let selectedHotbarIndex = 0;
+let selectedHotbar = 0;
 
-const recipes = [
+const RECIPES = [
     {
         name: "Crafting Wood",
-
         input: {
             wood: 1
         },
-
         output: {
             craftingWood: 5
         },
-
-        description:
-            "1 Wood → 5 Crafting Wood"
+        text: "1 Wood → 5 Crafting Wood"
     },
 
     {
         name: "Sticks",
-
         input: {
             craftingWood: 2
         },
-
         output: {
             sticks: 4
         },
-
-        description:
-            "2 Crafting Wood → 4 Sticks"
+        text: "2 Crafting Wood → 4 Sticks"
     },
 
     {
-        name: "Axe",
-
+        name: "Wood Axe",
         input: {
             craftingWood: 3,
             sticks: 2
         },
-
         output: {
-            axe: 1
+            woodAxe: 1
         },
-
-        description:
-            "3 Crafting Wood + 2 Sticks → Axe"
+        text: "3 Crafting Wood + 2 Sticks"
     },
 
     {
-        name: "Pickaxe",
-
+        name: "Wood Pickaxe",
         input: {
             craftingWood: 3,
             sticks: 2
         },
-
         output: {
-            pickaxe: 1
+            woodPickaxe: 1
         },
+        text: "3 Crafting Wood + 2 Sticks"
+    },
 
-        description:
-            "3 Crafting Wood + 2 Sticks → Pickaxe"
+    {
+        name: "Stone Axe",
+        input: {
+            stone: 3,
+            sticks: 2
+        },
+        output: {
+            stoneAxe: 1
+        },
+        text: "3 Stone + 2 Sticks"
+    },
+
+    {
+        name: "Stone Pickaxe",
+        input: {
+            stone: 3,
+            sticks: 2
+        },
+        output: {
+            stonePickaxe: 1
+        },
+        text: "3 Stone + 2 Sticks"
+    },
+
+    {
+        name: "Iron Axe",
+        input: {
+            iron: 3,
+            sticks: 2
+        },
+        output: {
+            ironAxe: 1
+        },
+        text: "3 Iron + 2 Sticks"
+    },
+
+    {
+        name: "Iron Pickaxe",
+        input: {
+            iron: 3,
+            sticks: 2
+        },
+        output: {
+            ironPickaxe: 1
+        },
+        text: "3 Iron + 2 Sticks"
     }
 ];
 
-const foodValues = {
+const FOOD = {
     beef: 6,
     pork: 5,
     mutton: 4
 };
 
-function itemName(type) {
-    const names = {
-        grass: "Grass",
-        dirt: "Dirt",
-        wood: "Wood",
-        leaves: "Leaves",
-        stone: "Stone",
-        craftingWood: "Crafting Wood",
-        sticks: "Sticks",
-        axe: "Axe",
-        pickaxe: "Pickaxe",
-        beef: "Beef",
-        pork: "Pork",
-        mutton: "Mutton",
-        bedrock: "Bedrock"
-    };
+const NAMES = {
+    grass: "Grass",
+    dirt: "Dirt",
+    wood: "Wood",
+    leaves: "Leaves",
+    stone: "Stone",
 
-    return names[type] || type;
-}
+    craftingWood: "Crafting Wood",
 
-function selectedItem() {
-    return hotbarItems[selectedHotbarIndex];
-}
+    coal: "Coal",
+    iron: "Iron",
+    gold: "Gold",
+    diamond: "Diamond",
 
-// =====================================================
-// RAYCASTING / MINING
-// =====================================================
+    woodAxe: "Wood Axe",
+    woodPickaxe: "Wood Pickaxe",
 
-const raycaster =
-    new THREE.Raycaster();
+    stoneAxe: "Stone Axe",
+    stonePickaxe: "Stone Pickaxe",
 
-const screenCenter =
-    new THREE.Vector2(
-        0,
-        0
+    ironAxe: "Iron Axe",
+    ironPickaxe: "Iron Pickaxe",
+
+    sticks: "Sticks",
+
+    beef: "Beef",
+    pork: "Pork",
+    mutton: "Mutton"
+};
+
+const nameOf = type => NAMES[type] || type;
+const selectedItem = () => hotbarItems[selectedHotbar];
+
+const isAxe = item =>
+    [
+        "woodAxe",
+        "stoneAxe",
+        "ironAxe"
+    ].includes(item);
+
+const isPickaxe = item =>
+    [
+        "woodPickaxe",
+        "stonePickaxe",
+        "ironPickaxe"
+    ].includes(item);
+
+const pickTier = item =>
+    item === "ironPickaxe"
+        ? 3
+        : item === "stonePickaxe"
+            ? 2
+            : item === "woodPickaxe"
+                ? 1
+                : 0;
+
+const axeTier = item =>
+    item === "ironAxe"
+        ? 3
+        : item === "stoneAxe"
+            ? 2
+            : item === "woodAxe"
+                ? 1
+                : 0;
+
+// ============================================================
+// DAY / NIGHT
+// ============================================================
+const DAY_LENGTH = 240;
+
+let worldTime = 0.28;
+let isNight = false;
+
+function updateDayNight(delta) {
+    worldTime =
+        (
+            worldTime +
+            delta /
+            DAY_LENGTH
+        ) % 1;
+
+    const angle =
+        worldTime *
+        Math.PI *
+        2 -
+        Math.PI /
+        2;
+
+    const sunY =
+        Math.sin(
+            angle
+        );
+
+    const daylight =
+        clamp(
+            (
+                sunY +
+                0.18
+            ) /
+            1.18,
+
+            0,
+            1
+        );
+
+    isNight =
+        daylight <
+        0.22;
+
+    sunLight.position.set(
+        Math.cos(angle) *
+        55,
+
+        sunY *
+        70,
+
+        Math.sin(angle) *
+        40
     );
 
-raycaster.far = 6;
+    sunLight.intensity =
+        lerp(
+            0.08,
+            1.25,
+            daylight
+        );
 
-let miningHeld = false;
-let miningTargetKey = null;
-let miningProgress = 0;
+    ambientLight.intensity =
+        lerp(
+            0.12,
+            0.46,
+            daylight
+        );
 
-let playerAttackCooldown = 0;
+    const day =
+        new THREE.Color(
+            0x72bfe7
+        );
 
-function getMiningTime(
-    blockType
-) {
-    const tool =
-        selectedItem();
+    const dusk =
+        new THREE.Color(
+            0x7c5267
+        );
 
-    if (
-        blockType ===
-        "bedrock"
-    ) {
-        return Infinity;
-    }
+    const night =
+        new THREE.Color(
+            0x08111f
+        );
 
-    if (
-        blockType ===
-        "leaves"
-    ) {
-        return 0.5;
-    }
-
-    if (
-        blockType ===
-        "grass"
-        ||
-        blockType ===
-        "dirt"
-    ) {
-        return 1;
-    }
+    let sky;
 
     if (
-        blockType ===
-        "wood"
-        ||
-        blockType ===
-        "craftingWood"
+        daylight >
+        0.35
     ) {
-        return tool ===
-        "axe"
-            ? 1
-            : 3;
+        sky =
+            night
+                .clone()
+                .lerp(
+                    day,
+
+                    clamp(
+                        (
+                            daylight -
+                            0.35
+                        ) /
+                        0.65,
+
+                        0,
+                        1
+                    )
+                );
     }
 
-    if (
-        blockType ===
-        "stone"
-    ) {
-        return tool ===
-        "pickaxe"
-            ? 3
-            : 5;
+    else {
+        sky =
+            night
+                .clone()
+                .lerp(
+                    dusk,
+
+                    daylight /
+                    0.35
+                );
     }
 
-    return 2;
+    scene.background.copy(
+        sky
+    );
+
+    scene.fog.color.copy(
+        sky
+    );
+
+    const totalMinutes =
+        Math.floor(
+            worldTime *
+            24 *
+            60
+        );
+
+    const hour =
+        Math.floor(
+            totalMinutes /
+            60
+        ) % 24;
+
+    const minute =
+        totalMinutes %
+        60;
+
+    clockHud.textContent =
+        `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${isNight ? "NIGHT" : "DAY"}`;
 }
 
-function resetMining() {
-    miningTargetKey = null;
-    miningProgress = 0;
+// ============================================================
+// TERRAIN / CAVES / ORES / STRUCTURES
+// ============================================================
+const chunkOf =
+    v =>
+        Math.floor(
+            v /
+            CHUNK_SIZE
+        );
 
-    miningFill.style.width =
-        "0%";
-
-    miningHud.style.display =
-        "none";
-}
-
-// =====================================================
-// TERRAIN
-// =====================================================
-
-function coordinateRandom(
+function terrainHeight(
     x,
     z
 ) {
-    const value =
+    const broad =
         Math.sin(
-            x * 12.9898 +
-            z * 78.233
+            x *
+            0.025
+        ) *
+        3.1
+
+        +
+
+        Math.cos(
+            z *
+            0.022
+        ) *
+        2.8;
+
+    const ridges =
+        Math.sin(
+            (
+                x +
+                z
+            ) *
+            0.047
+        ) *
+        1.8
+
+        +
+
+        Math.cos(
+            (
+                x -
+                z
+            ) *
+            0.039
+        ) *
+        1.3;
+
+    const bumps =
+        Math.sin(
+            x *
+            0.11
+        ) *
+        0.75
+
+        +
+
+        Math.cos(
+            z *
+            0.10
+        ) *
+        0.75;
+
+    return clamp(
+        Math.floor(
+            6 +
+            broad +
+            ridges +
+            bumps
+        ),
+
+        1,
+        15
+    );
+}
+
+function caveNoise(
+    x,
+    y,
+    z
+) {
+    return (
+        Math.sin(
+            x *
+            0.17
+        )
+
+        +
+
+        Math.sin(
+            z *
+            0.19
+        )
+
+        +
+
+        Math.sin(
+            (
+                x +
+                z
+            ) *
+            0.08
+        )
+
+        +
+
+        Math.cos(
+            y *
+            0.42 +
+            x *
+            0.05
+        )
+
+        +
+
+        Math.sin(
+            y *
+            0.33 +
+            z *
+            0.06
+        )
+    );
+}
+
+function structureForChunk(
+    cx,
+    cz
+) {
+    if (
+        Math.abs(cx) <= 1
+        &&
+        Math.abs(cz) <= 1
+    ) {
+        return null;
+    }
+
+    const r =
+        hash2(
+            cx,
+            cz,
+            808
+        );
+
+    if (
+        r <
+        0.025
+    ) {
+        return "hut";
+    }
+
+    if (
+        r <
+        0.043
+    ) {
+        return "ruin";
+    }
+
+    return null;
+}
+
+function structureCenter(
+    cx,
+    cz
+) {
+    return {
+        x:
+            cx *
+            CHUNK_SIZE +
+            8,
+
+        z:
+            cz *
+            CHUNK_SIZE +
+            8
+    };
+}
+
+function nearStructure(
+    x,
+    z,
+    radius = 5
+) {
+    const cx =
+        chunkOf(
+            x
+        );
+
+    const cz =
+        chunkOf(
+            z
+        );
+
+    for (
+        let dx = -1;
+        dx <= 1;
+        dx++
+    ) {
+        for (
+            let dz = -1;
+            dz <= 1;
+            dz++
+        ) {
+            const scx =
+                cx +
+                dx;
+
+            const scz =
+                cz +
+                dz;
+
+            if (
+                !structureForChunk(
+                    scx,
+                    scz
+                )
+            ) {
+                continue;
+            }
+
+            const c =
+                structureCenter(
+                    scx,
+                    scz
+                );
+
+            if (
+                Math.hypot(
+                    x -
+                    c.x,
+
+                    z -
+                    c.z
+                ) <=
+                radius
+            ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function caveEntranceForChunk(
+    cx,
+    cz
+) {
+    const r =
+        hash2(
+            cx,
+            cz,
+            404
+        );
+
+    if (
+        r >
+        0.075
+        ||
+        structureForChunk(
+            cx,
+            cz
+        )
+    ) {
+        return null;
+    }
+
+    const x =
+        cx *
+        CHUNK_SIZE +
+        4 +
+        Math.floor(
+            hash2(
+                cx,
+                cz,
+                405
+            ) *
+            8
+        );
+
+    const z =
+        cz *
+        CHUNK_SIZE +
+        4 +
+        Math.floor(
+            hash2(
+                cx,
+                cz,
+                406
+            ) *
+            8
+        );
+
+    return {
+        x,
+        z,
+
+        ground:
+            terrainHeight(
+                x,
+                z
+            )
+    };
+}
+
+function insideEntrance(
+    x,
+    y,
+    z
+) {
+    const cx =
+        chunkOf(
+            x
+        );
+
+    const cz =
+        chunkOf(
+            z
+        );
+
+    for (
+        let dx = -1;
+        dx <= 1;
+        dx++
+    ) {
+        for (
+            let dz = -1;
+            dz <= 1;
+            dz++
+        ) {
+            const e =
+                caveEntranceForChunk(
+                    cx +
+                    dx,
+
+                    cz +
+                    dz
+                );
+
+            if (
+                !e
+            ) {
+                continue;
+            }
+
+            const dist =
+                Math.hypot(
+                    x -
+                    e.x,
+
+                    z -
+                    e.z
+                );
+
+            if (
+                dist <
+                1.45
+                &&
+                y <=
+                e.ground +
+                1
+                &&
+                y >=
+                e.ground -
+                7
+            ) {
+                return true;
+            }
+
+            if (
+                dist <
+                2.3
+                &&
+                y <=
+                e.ground -
+                4
+                &&
+                y >=
+                e.ground -
+                8
+            ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function shouldCarveCave(
+    x,
+    y,
+    z,
+    surface
+) {
+    if (
+        y >=
+        surface -
+        2
+        ||
+        y <=
+        BEDROCK_Y +
+        1
+    ) {
+        return false;
+    }
+
+    if (
+        insideEntrance(
+            x,
+            y,
+            z
+        )
+    ) {
+        return true;
+    }
+
+    const n =
+        caveNoise(
+            x,
+            y,
+            z
+        );
+
+    const wobble =
+        (
+            hash3(
+                Math.floor(
+                    x /
+                    3
+                ),
+
+                Math.floor(
+                    y /
+                    2
+                ),
+
+                Math.floor(
+                    z /
+                    3
+                ),
+
+                99
+            )
+            -
+            0.5
         )
         *
-        43758.5453;
+        0.7;
 
-    return value -
-        Math.floor(value);
-}
-
-function getTerrainHeight(
-    x,
-    z
-) {
-    const huge =
-        Math.sin(
-            x * 0.026
-        ) * 2.6
-
-        +
-
-        Math.cos(
-            z * 0.024
-        ) * 2.3;
-
-    const medium =
-        Math.sin(
-            (x + z) *
-            0.052
-        ) * 1.7
-
-        +
-
-        Math.cos(
-            (x - z) *
-            0.041
-        ) * 1.3;
-
-    const small =
-        Math.sin(
-            x * 0.11
-        ) * 0.7
-
-        +
-
-        Math.cos(
-            z * 0.10
-        ) * 0.7;
-
-    return Math.max(
-        0,
-
-        Math.min(
-            11,
-
-            Math.floor(
-                4 +
-                huge +
-                medium +
-                small
-            )
-        )
+    return (
+        n +
+        wobble
+        >
+        2.55
     );
 }
 
-// =====================================================
-// TREES
-// =====================================================
+function oreAt(
+    x,
+    y,
+    z
+) {
+    const r =
+        hash3(
+            x,
+            y,
+            z,
+            777
+        );
 
-function canTreeSpawn(
+    if (
+        y <=
+        -6
+        &&
+        r <
+        0.006
+    ) {
+        return "diamondOre";
+    }
+
+    if (
+        y <=
+        -2
+        &&
+        r <
+        0.016
+    ) {
+        return "goldOre";
+    }
+
+    if (
+        y <=
+        4
+        &&
+        r <
+        0.045
+    ) {
+        return "ironOre";
+    }
+
+    if (
+        r <
+        0.095
+    ) {
+        return "coalOre";
+    }
+
+    return "stone";
+}
+
+function treeCanSpawn(
     x,
     z
 ) {
@@ -515,234 +1134,205 @@ function canTreeSpawn(
         Math.hypot(
             x,
             z - 8
-        ) < 8
+        ) <
+        9
+        ||
+        nearStructure(
+            x,
+            z,
+            6
+        )
     ) {
         return false;
     }
 
     if (
-        coordinateRandom(
+        hash2(
             x,
-            z
-        ) >= 0.027
+            z,
+            12
+        ) >
+        0.028
     ) {
         return false;
     }
 
-    const center =
-        getTerrainHeight(
+    const h =
+        terrainHeight(
             x,
-            z
-        );
-
-    const north =
-        getTerrainHeight(
-            x,
-            z - 1
-        );
-
-    const south =
-        getTerrainHeight(
-            x,
-            z + 1
-        );
-
-    const east =
-        getTerrainHeight(
-            x + 1,
-            z
-        );
-
-    const west =
-        getTerrainHeight(
-            x - 1,
             z
         );
 
     return (
         Math.abs(
-            center -
-            north
+            h -
+            terrainHeight(
+                x + 1,
+                z
+            )
         ) <= 1
 
         &&
 
         Math.abs(
-            center -
-            south
+            h -
+            terrainHeight(
+                x - 1,
+                z
+            )
         ) <= 1
 
         &&
 
         Math.abs(
-            center -
-            east
+            h -
+            terrainHeight(
+                x,
+                z + 1
+            )
         ) <= 1
 
         &&
 
         Math.abs(
-            center -
-            west
+            h -
+            terrainHeight(
+                x,
+                z - 1
+            )
         ) <= 1
     );
 }
 
-function getTreeBlocks(
-    treeX,
-    treeZ
+function treeBlocks(
+    x,
+    z
 ) {
     if (
-        !canTreeSpawn(
-            treeX,
-            treeZ
+        !treeCanSpawn(
+            x,
+            z
         )
     ) {
         return [];
     }
 
-    const groundY =
-        getTerrainHeight(
-            treeX,
-            treeZ
+    const ground =
+        terrainHeight(
+            x,
+            z
         );
 
-    const trunkHeight =
-        coordinateRandom(
-            treeX + 500,
-            treeZ + 500
-        ) > 0.5
+    const height =
+        hash2(
+            x,
+            z,
+            13
+        ) >
+        0.5
             ? 5
             : 4;
 
-    const blocks = [];
+    const out = [];
 
     for (
         let y = 1;
-        y <= trunkHeight;
+        y <= height;
         y++
     ) {
-        blocks.push({
-            x: treeX,
+        out.push({
+            x,
 
             y:
-                groundY +
+                ground +
                 y,
 
-            z: treeZ,
+            z,
 
             type:
                 "wood"
         });
     }
 
-    const leafBase =
-        groundY +
-        trunkHeight;
+    const base =
+        ground +
+        height;
 
     for (
-        let lx = -2;
-        lx <= 2;
-        lx++
+        let yy = 0;
+        yy <= 1;
+        yy++
     ) {
         for (
-            let lz = -2;
-            lz <= 2;
-            lz++
+            let dx = -2;
+            dx <= 2;
+            dx++
         ) {
-            if (
-                Math.abs(lx) === 2
-                &&
-                Math.abs(lz) === 2
+            for (
+                let dz = -2;
+                dz <= 2;
+                dz++
             ) {
-                continue;
+                if (
+                    Math.abs(dx) === 2
+                    &&
+                    Math.abs(dz) === 2
+                ) {
+                    continue;
+                }
+
+                if (
+                    yy === 0
+                    &&
+                    dx === 0
+                    &&
+                    dz === 0
+                ) {
+                    continue;
+                }
+
+                out.push({
+                    x:
+                        x +
+                        dx,
+
+                    y:
+                        base +
+                        yy,
+
+                    z:
+                        z +
+                        dz,
+
+                    type:
+                        "leaves"
+                });
             }
-
-            if (
-                lx === 0
-                &&
-                lz === 0
-            ) {
-                continue;
-            }
-
-            blocks.push({
-                x:
-                    treeX +
-                    lx,
-
-                y:
-                    leafBase,
-
-                z:
-                    treeZ +
-                    lz,
-
-                type:
-                    "leaves"
-            });
         }
     }
 
     for (
-        let lx = -2;
-        lx <= 2;
-        lx++
+        let dx = -1;
+        dx <= 1;
+        dx++
     ) {
         for (
-            let lz = -2;
-            lz <= 2;
-            lz++
+            let dz = -1;
+            dz <= 1;
+            dz++
         ) {
-            if (
-                Math.abs(lx) === 2
-                &&
-                Math.abs(lz) === 2
-            ) {
-                continue;
-            }
-
-            blocks.push({
+            out.push({
                 x:
-                    treeX +
-                    lx,
+                    x +
+                    dx,
 
                 y:
-                    leafBase +
-                    1,
-
-                z:
-                    treeZ +
-                    lz,
-
-                type:
-                    "leaves"
-            });
-        }
-    }
-
-    for (
-        let lx = -1;
-        lx <= 1;
-        lx++
-    ) {
-        for (
-            let lz = -1;
-            lz <= 1;
-            lz++
-        ) {
-            blocks.push({
-                x:
-                    treeX +
-                    lx,
-
-                y:
-                    leafBase +
+                    base +
                     2,
 
                 z:
-                    treeZ +
-                    lz,
+                    z +
+                    dz,
 
                 type:
                     "leaves"
@@ -750,37 +1340,296 @@ function getTreeBlocks(
         }
     }
 
-    blocks.push({
-        x: treeX,
+    out.push({
+        x,
 
         y:
-            leafBase +
+            base +
             3,
 
-        z: treeZ,
+        z,
 
         type:
             "leaves"
     });
 
-    return blocks;
+    return out;
 }
 
-// =====================================================
-// CHUNKS / WORLD EDITS
-// =====================================================
+function structureBlocks(
+    cx,
+    cz
+) {
+    const type =
+        structureForChunk(
+            cx,
+            cz
+        );
 
+    if (
+        !type
+    ) {
+        return [];
+    }
+
+    const {
+        x: ox,
+        z: oz
+    } =
+        structureCenter(
+            cx,
+            cz
+        );
+
+    const g =
+        terrainHeight(
+            ox,
+            oz
+        );
+
+    const out = [];
+
+    const add =
+        (
+            x,
+            y,
+            z,
+            blockType
+        ) =>
+            out.push({
+                x,
+                y,
+                z,
+                type:
+                    blockType
+            });
+
+    if (
+        type ===
+        "hut"
+    ) {
+        for (
+            let x = -2;
+            x <= 2;
+            x++
+        ) {
+            for (
+                let z = -2;
+                z <= 2;
+                z++
+            ) {
+                add(
+                    ox +
+                    x,
+
+                    g +
+                    1,
+
+                    oz +
+                    z,
+
+                    "craftingWood"
+                );
+            }
+        }
+
+        for (
+            let y = 2;
+            y <= 4;
+            y++
+        ) {
+            for (
+                let x = -2;
+                x <= 2;
+                x++
+            ) {
+                for (
+                    let z = -2;
+                    z <= 2;
+                    z++
+                ) {
+                    const edge =
+                        Math.abs(x) === 2
+                        ||
+                        Math.abs(z) === 2;
+
+                    const door =
+                        z === 2
+                        &&
+                        x === 0
+                        &&
+                        y <= 3;
+
+                    if (
+                        edge
+                        &&
+                        !door
+                    ) {
+                        add(
+                            ox +
+                            x,
+
+                            g +
+                            y,
+
+                            oz +
+                            z,
+
+                            y === 2
+                            &&
+                            Math.abs(x) === 2
+                            &&
+                            Math.abs(z) === 2
+
+                                ? "wood"
+
+                                : "craftingWood"
+                        );
+                    }
+                }
+            }
+        }
+
+        for (
+            let x = -3;
+            x <= 3;
+            x++
+        ) {
+            for (
+                let z = -3;
+                z <= 3;
+                z++
+            ) {
+                add(
+                    ox +
+                    x,
+
+                    g +
+                    5,
+
+                    oz +
+                    z,
+
+                    "wood"
+                );
+            }
+        }
+    }
+
+    else {
+        for (
+            let x = -2;
+            x <= 2;
+            x++
+        ) {
+            for (
+                let z = -2;
+                z <= 2;
+                z++
+            ) {
+                if (
+                    hash2(
+                        ox +
+                        x,
+
+                        oz +
+                        z,
+
+                        900
+                    ) >
+                    0.25
+                ) {
+                    add(
+                        ox +
+                        x,
+
+                        g +
+                        1,
+
+                        oz +
+                        z,
+
+                        "stone"
+                    );
+                }
+            }
+        }
+
+        for (
+            let y = 2;
+            y <= 4;
+            y++
+        ) {
+            for (
+                const [
+                    x,
+                    z
+                ]
+                of [
+                    [-2, -2],
+                    [2, -2],
+                    [-2, 2],
+                    [2, 2]
+                ]
+            ) {
+                if (
+                    hash3(
+                        ox +
+                        x,
+
+                        g +
+                        y,
+
+                        oz +
+                        z,
+
+                        901
+                    ) >
+                    0.2
+                ) {
+                    add(
+                        ox +
+                        x,
+
+                        g +
+                        y,
+
+                        oz +
+                        z,
+
+                        "stone"
+                    );
+                }
+            }
+        }
+
+        add(
+            ox,
+
+            g +
+            2,
+
+            oz,
+
+            "goldOre"
+        );
+    }
+
+    return out;
+}
+
+// ============================================================
+// WORLD EDITS / CHUNK GENERATION
+// ============================================================
 function getChunkForWorld(
     x,
     z
 ) {
     return loadedChunks.get(
-
-        chunkKey(
-            worldToChunk(x),
-            worldToChunk(z)
+        key2(
+            chunkOf(x),
+            chunkOf(z)
         )
-
     ) || null;
 }
 
@@ -791,9 +1640,9 @@ function setWorldEdit(
     typeOrNull
 ) {
     const ck =
-        chunkKey(
-            worldToChunk(x),
-            worldToChunk(z)
+        key2(
+            chunkOf(x),
+            chunkOf(z)
         );
 
     if (
@@ -808,9 +1657,11 @@ function setWorldEdit(
     }
 
     chunkEdits
-        .get(ck)
+        .get(
+            ck
+        )
         .set(
-            blockKey(
+            key3(
                 x,
                 y,
                 z
@@ -845,48 +1696,52 @@ function generateChunkBlocks(
         CHUNK_SIZE -
         1;
 
-    function putBlock(
-        x,
-        y,
-        z,
-        type
-    ) {
-        if (
-            x < minX
-            ||
-            x > maxX
-            ||
-            z < minZ
-            ||
-            z > maxZ
-        ) {
-            return;
-        }
+    const put =
+        (
+            x,
+            y,
+            z,
+            type,
+            overwrite = false
+        ) => {
+            if (
+                x < minX
+                ||
+                x > maxX
+                ||
+                z < minZ
+                ||
+                z > maxZ
+            ) {
+                return;
+            }
 
-        const key =
-            blockKey(
-                x,
-                y,
-                z
-            );
-
-        if (
-            !blocks.has(
-                key
-            )
-        ) {
-            blocks.set(
-                key,
-
-                {
+            const k =
+                key3(
                     x,
                     y,
-                    z,
-                    type
-                }
-            );
-        }
-    }
+                    z
+                );
+
+            if (
+                overwrite
+                ||
+                !blocks.has(
+                    k
+                )
+            ) {
+                blocks.set(
+                    k,
+
+                    {
+                        x,
+                        y,
+                        z,
+                        type
+                    }
+                );
+            }
+        };
 
     for (
         let x = minX;
@@ -898,94 +1753,168 @@ function generateChunkBlocks(
             z <= maxZ;
             z++
         ) {
-            const height =
-                getTerrainHeight(
+            const surface =
+                terrainHeight(
                     x,
                     z
                 );
 
-            putBlock(
-                x,
-                height,
-                z,
-                "grass"
-            );
-
-            putBlock(
-                x,
-                height - 1,
-                z,
-                "dirt"
-            );
-
-            putBlock(
-                x,
-                height - 2,
-                z,
-                "dirt"
-            );
-
             for (
                 let y =
-                    height -
-                    3;
+                    BEDROCK_Y;
 
-                y >
-                bedrockY;
+                y <=
+                    surface;
 
-                y--
+                y++
             ) {
-                putBlock(
-                    x,
-                    y,
-                    z,
-                    "stone"
-                );
-            }
+                if (
+                    y ===
+                    BEDROCK_Y
+                ) {
+                    put(
+                        x,
+                        y,
+                        z,
+                        "bedrock"
+                    );
 
-            putBlock(
-                x,
-                bedrockY,
-                z,
-                "bedrock"
-            );
+                    continue;
+                }
+
+                if (
+                    insideEntrance(
+                        x,
+                        y,
+                        z
+                    )
+                    ||
+                    shouldCarveCave(
+                        x,
+                        y,
+                        z,
+                        surface
+                    )
+                ) {
+                    continue;
+                }
+
+                if (
+                    y ===
+                    surface
+                ) {
+                    put(
+                        x,
+                        y,
+                        z,
+                        "grass"
+                    );
+                }
+
+                else if (
+                    y >=
+                    surface -
+                    2
+                ) {
+                    put(
+                        x,
+                        y,
+                        z,
+                        "dirt"
+                    );
+                }
+
+                else {
+                    put(
+                        x,
+                        y,
+                        z,
+
+                        oreAt(
+                            x,
+                            y,
+                            z
+                        )
+                    );
+                }
+            }
         }
     }
 
     for (
-        let treeX =
+        let tx =
             minX -
             2;
 
-        treeX <=
-        maxX +
-        2;
+        tx <=
+            maxX +
+            2;
 
-        treeX++
+        tx++
     ) {
         for (
-            let treeZ =
+            let tz =
                 minZ -
                 2;
 
-            treeZ <=
-            maxZ +
-            2;
+            tz <=
+                maxZ +
+                2;
 
-            treeZ++
+            tz++
         ) {
             for (
-                const block
-                of getTreeBlocks(
-                    treeX,
-                    treeZ
+                const b
+                of treeBlocks(
+                    tx,
+                    tz
                 )
             ) {
-                putBlock(
-                    block.x,
-                    block.y,
-                    block.z,
-                    block.type
+                put(
+                    b.x,
+                    b.y,
+                    b.z,
+                    b.type
+                );
+            }
+        }
+    }
+
+    for (
+        let sx =
+            cx -
+            1;
+
+        sx <=
+            cx +
+            1;
+
+        sx++
+    ) {
+        for (
+            let sz =
+                cz -
+                1;
+
+            sz <=
+                cz +
+                1;
+
+            sz++
+        ) {
+            for (
+                const b
+                of structureBlocks(
+                    sx,
+                    sz
+                )
+            ) {
+                put(
+                    b.x,
+                    b.y,
+                    b.z,
+                    b.type,
+                    true
                 );
             }
         }
@@ -993,7 +1922,7 @@ function generateChunkBlocks(
 
     const edits =
         chunkEdits.get(
-            chunkKey(
+            key2(
                 cx,
                 cz
             )
@@ -1004,92 +1933,89 @@ function generateChunkBlocks(
     ) {
         for (
             const [
-                key,
-                typeOrNull
+                k,
+                type
             ]
             of edits
         ) {
             if (
-                typeOrNull ===
+                type ===
                 null
             ) {
                 blocks.delete(
-                    key
+                    k
                 );
-
-                continue;
             }
 
-            const [
-                x,
-                y,
-                z
-            ] =
-                key
-                    .split(",")
-                    .map(Number);
-
-            blocks.set(
-                key,
-
-                {
+            else {
+                const [
                     x,
                     y,
-                    z,
+                    z
+                ] =
+                    k
+                        .split(",")
+                        .map(Number);
 
-                    type:
-                        typeOrNull
-                }
-            );
+                blocks.set(
+                    k,
+
+                    {
+                        x,
+                        y,
+                        z,
+                        type
+                    }
+                );
+            }
         }
     }
 
     return blocks;
 }
 
-// =====================================================
-// PIXEL TEXTURES
-// =====================================================
-
+// ============================================================
+// TEXTURES
+// ============================================================
 function makeCanvas() {
-    const canvas =
+    const c =
         document.createElement(
             "canvas"
         );
 
-    canvas.width =
+    c.width =
         16;
 
-    canvas.height =
+    c.height =
         16;
 
-    return canvas;
+    return c;
 }
 
-function finishPixelTexture(
-    canvas
+function finishTexture(
+    c
 ) {
-    const texture =
+    const t =
         new THREE.CanvasTexture(
-            canvas
+            c
         );
 
-    texture.magFilter =
+    t.magFilter =
         THREE.NearestFilter;
 
-    texture.minFilter =
+    t.minFilter =
         THREE.NearestFilter;
 
-    texture.generateMipmaps =
+    t.generateMipmaps =
         false;
 
-    return texture;
+    return t;
 }
 
-function speckleTexture(
+function speckled(
     base,
     colors,
-    amount
+    count = 48
 ) {
     const c =
         makeCanvas();
@@ -1111,7 +2037,7 @@ function speckleTexture(
 
     for (
         let i = 0;
-        i < amount;
+        i < count;
         i++
     ) {
         x.fillStyle =
@@ -1122,16 +2048,22 @@ function speckleTexture(
 
         x.fillRect(
             (
-                i * 7 +
-                i * i
-            ) % 16,
+                i *
+                7 +
+                i *
+                i
+            ) %
+            16,
 
             (
-                i * 11 +
+                i *
+                11 +
                 3
-            ) % 16,
+            ) %
+            16,
 
-            i % 9 === 0
+            i %
+            13 === 0
                 ? 2
                 : 1,
 
@@ -1139,27 +2071,12 @@ function speckleTexture(
         );
     }
 
-    return finishPixelTexture(
+    return finishTexture(
         c
     );
 }
 
-function createGrassTopTexture() {
-    return speckleTexture(
-        "#4b9d38",
-
-        [
-            "#5bb347",
-            "#3f8730",
-            "#67bc4e",
-            "#36792b"
-        ],
-
-        60
-    );
-}
-
-function createGrassSideTexture() {
+function grassSideTexture() {
     const c =
         makeCanvas();
 
@@ -1212,35 +2129,37 @@ function createGrassSideTexture() {
         2
     );
 
-    const colors = [
-        "#80563a",
-        "#593923",
-        "#744b30"
-    ];
-
     for (
         let i = 0;
-        i < 28;
+        i < 26;
         i++
     ) {
         x.fillStyle =
-            colors[
+            [
+                "#80563a",
+                "#593923",
+                "#744b30"
+            ][
                 i %
-                colors.length
+                3
             ];
 
         x.fillRect(
             (
-                i * 5 +
+                i *
+                5 +
                 2
-            ) % 16,
+            ) %
+            16,
 
             5 +
             (
                 (
-                    i * 9 +
+                    i *
+                    9 +
                     1
-                ) % 11
+                ) %
+                11
             ),
 
             1,
@@ -1248,27 +2167,12 @@ function createGrassSideTexture() {
         );
     }
 
-    return finishPixelTexture(
+    return finishTexture(
         c
     );
 }
 
-function createDirtTexture() {
-    return speckleTexture(
-        "#70492f",
-
-        [
-            "#85593a",
-            "#5c3a24",
-            "#986641",
-            "#67412a"
-        ],
-
-        54
-    );
-}
-
-function createWoodSideTexture() {
+function woodSideTexture() {
     const c =
         makeCanvas();
 
@@ -1287,21 +2191,19 @@ function createWoodSideTexture() {
         16
     );
 
-    const stripes = [
-        "#4f311d",
-        "#7c5434",
-        "#5b3922"
-    ];
-
     for (
         let i = 1;
         i < 16;
         i += 3
     ) {
         x.fillStyle =
-            stripes[
+            [
+                "#4f311d",
+                "#7c5434",
+                "#5b3922"
+            ][
                 i %
-                stripes.length
+                3
             ];
 
         x.fillRect(
@@ -1329,12 +2231,12 @@ function createWoodSideTexture() {
         4
     );
 
-    return finishPixelTexture(
+    return finishTexture(
         c
     );
 }
 
-function createWoodTopTexture() {
+function woodTopTexture() {
     const c =
         makeCanvas();
 
@@ -1380,42 +2282,12 @@ function createWoodTopTexture() {
         2
     );
 
-    return finishPixelTexture(
+    return finishTexture(
         c
     );
 }
 
-function createLeavesTexture() {
-    return speckleTexture(
-        "#2e6d2c",
-
-        [
-            "#3d8538",
-            "#245822",
-            "#4a9141",
-            "#326f2e"
-        ],
-
-        76
-    );
-}
-
-function createStoneTexture() {
-    return speckleTexture(
-        "#686868",
-
-        [
-            "#7d7d7d",
-            "#555555",
-            "#8c8c8c",
-            "#606060"
-        ],
-
-        48
-    );
-}
-
-function createCraftingWoodTexture() {
+function craftingWoodTexture() {
     const c =
         makeCanvas();
 
@@ -1474,30 +2346,103 @@ function createCraftingWoodTexture() {
         1
     );
 
-    x.fillRect(
-        11,
-        13,
-        3,
-        1
-    );
-
-    return finishPixelTexture(
+    return finishTexture(
         c
     );
 }
 
-function createBedrockTexture() {
-    return speckleTexture(
-        "#282828",
+function oreTexture(
+    colorA,
+    colorB
+) {
+    const c =
+        makeCanvas();
 
-        [
-            "#111111",
-            "#454545",
-            "#333333",
-            "#5a5a5a"
-        ],
+    const x =
+        c.getContext(
+            "2d"
+        );
 
-        82
+    x.fillStyle =
+        "#686868";
+
+    x.fillRect(
+        0,
+        0,
+        16,
+        16
+    );
+
+    for (
+        let i = 0;
+        i < 26;
+        i++
+    ) {
+        x.fillStyle =
+            i %
+            2
+                ? "#777"
+                : "#555";
+
+        x.fillRect(
+            (
+                i *
+                7 +
+                2
+            ) %
+            16,
+
+            (
+                i *
+                5 +
+                1
+            ) %
+            16,
+
+            1,
+            1
+        );
+    }
+
+    const spots = [
+        [3, 3],
+        [10, 2],
+        [7, 7],
+        [12, 9],
+        [4, 12],
+        [9, 13]
+    ];
+
+    for (
+        const [
+            sx,
+            sy
+        ]
+        of spots
+    ) {
+        x.fillStyle =
+            colorA;
+
+        x.fillRect(
+            sx,
+            sy,
+            2,
+            2
+        );
+
+        x.fillStyle =
+            colorB;
+
+        x.fillRect(
+            sx + 1,
+            sy,
+            1,
+            1
+        );
+    }
+
+    return finishTexture(
+        c
     );
 }
 
@@ -1505,109 +2450,190 @@ function createMaterials() {
     const grassTop =
         new THREE.MeshLambertMaterial({
             map:
-                createGrassTopTexture()
+                speckled(
+                    "#4b9d38",
+
+                    [
+                        "#5bb347",
+                        "#3f8730",
+                        "#67bc4e",
+                        "#36792b"
+                    ],
+
+                    60
+                )
         });
 
     const grassSide =
         new THREE.MeshLambertMaterial({
             map:
-                createGrassSideTexture()
+                grassSideTexture()
         });
 
     const dirt =
         new THREE.MeshLambertMaterial({
             map:
-                createDirtTexture()
+                speckled(
+                    "#70492f",
+
+                    [
+                        "#85593a",
+                        "#5c3a24",
+                        "#986641",
+                        "#67412a"
+                    ],
+
+                    54
+                )
         });
 
     const woodSide =
         new THREE.MeshLambertMaterial({
             map:
-                createWoodSideTexture()
+                woodSideTexture()
         });
 
     const woodTop =
         new THREE.MeshLambertMaterial({
             map:
-                createWoodTopTexture()
+                woodTopTexture()
         });
 
-    const leaves =
-        new THREE.MeshLambertMaterial({
-            map:
-                createLeavesTexture()
-        });
-
-    const stone =
-        new THREE.MeshLambertMaterial({
-            map:
-                createStoneTexture()
-        });
-
-    const craftingWood =
-        new THREE.MeshLambertMaterial({
-            map:
-                createCraftingWoodTexture()
-        });
-
-    const bedrock =
-        new THREE.MeshLambertMaterial({
-            map:
-                createBedrockTexture()
-        });
-
-    materials = {
-        grass: [
-            grassSide,
-            grassSide,
-            grassTop,
-            dirt,
-            grassSide,
-            grassSide
-        ],
-
+    materials.grass = [
+        grassSide,
+        grassSide,
+        grassTop,
         dirt,
+        grassSide,
+        grassSide
+    ];
 
-        wood: [
-            woodSide,
-            woodSide,
-            woodTop,
-            woodTop,
-            woodSide,
-            woodSide
-        ],
+    materials.dirt =
+        dirt;
 
-        leaves,
-        stone,
-        craftingWood,
-        bedrock
-    };
+    materials.wood = [
+        woodSide,
+        woodSide,
+        woodTop,
+        woodTop,
+        woodSide,
+        woodSide
+    ];
+
+    materials.leaves =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#2e6d2c",
+
+                    [
+                        "#3d8538",
+                        "#245822",
+                        "#4a9141",
+                        "#326f2e"
+                    ],
+
+                    76
+                )
+        });
+
+    materials.stone =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#686868",
+
+                    [
+                        "#7d7d7d",
+                        "#555",
+                        "#8c8c8c",
+                        "#606060"
+                    ],
+
+                    48
+                )
+        });
+
+    materials.craftingWood =
+        new THREE.MeshLambertMaterial({
+            map:
+                craftingWoodTexture()
+        });
+
+    materials.coalOre =
+        new THREE.MeshLambertMaterial({
+            map:
+                oreTexture(
+                    "#1f1f1f",
+                    "#090909"
+                )
+        });
+
+    materials.ironOre =
+        new THREE.MeshLambertMaterial({
+            map:
+                oreTexture(
+                    "#a36d4f",
+                    "#c48a68"
+                )
+        });
+
+    materials.goldOre =
+        new THREE.MeshLambertMaterial({
+            map:
+                oreTexture(
+                    "#d7b42c",
+                    "#f0d95a"
+                )
+        });
+
+    materials.diamondOre =
+        new THREE.MeshLambertMaterial({
+            map:
+                oreTexture(
+                    "#35c9c8",
+                    "#8af1ed"
+                )
+        });
+
+    materials.bedrock =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#282828",
+
+                    [
+                        "#111",
+                        "#454545",
+                        "#333",
+                        "#5a5a5a"
+                    ],
+
+                    82
+                )
+        });
 }
 
-// =====================================================
-// CHUNK RENDERING / LOADING
-// =====================================================
-
-function getBlockTint(
+// ============================================================
+// CHUNK RENDERING
+// ============================================================
+function blockTint(
     block
 ) {
-    const random =
-        coordinateRandom(
-            block.x * 7 +
-            block.y * 3,
-
-            block.z * 11
-        );
-
-    const shade =
-        0.9 +
-        random *
-        0.1;
+    const s =
+        0.92 +
+        hash3(
+            block.x,
+            block.y,
+            block.z,
+            52
+        ) *
+        0.08;
 
     return new THREE.Color(
-        shade,
-        shade,
-        shade
+        s,
+        s,
+        s
     );
 }
 
@@ -1630,25 +2656,65 @@ function rebuildChunk(
     chunk.meshes =
         [];
 
-    const grouped = {};
+    const groups =
+        Object.fromEntries(
+            BLOCKS.map(
+                t => [
+                    t,
+                    []
+                ]
+            )
+        );
+
+    const exposed =
+        b => {
+            const neighbors = [
+                [1, 0, 0],
+                [-1, 0, 0],
+                [0, 1, 0],
+                [0, -1, 0],
+                [0, 0, 1],
+                [0, 0, -1]
+            ];
+
+            return neighbors.some(
+                (
+                    [
+                        dx,
+                        dy,
+                        dz
+                    ]
+                ) =>
+                    !chunk.blocks.has(
+                        key3(
+                            b.x +
+                            dx,
+
+                            b.y +
+                            dy,
+
+                            b.z +
+                            dz
+                        )
+                    )
+            );
+        };
 
     for (
-        const type
-        of allBlockTypes
-    ) {
-        grouped[type] =
-            [];
-    }
-
-    for (
-        const block
+        const b
         of chunk.blocks.values()
     ) {
-        grouped[
-            block.type
-        ].push(
-            block
-        );
+        if (
+            exposed(
+                b
+            )
+        ) {
+            groups[
+                b.type
+            ]?.push(
+                b
+            );
+        }
     }
 
     const dummy =
@@ -1656,10 +2722,10 @@ function rebuildChunk(
 
     for (
         const type
-        of allBlockTypes
+        of BLOCKS
     ) {
         const blocks =
-            grouped[
+            groups[
                 type
             ];
 
@@ -1681,13 +2747,13 @@ function rebuildChunk(
             i < blocks.length;
             i++
         ) {
-            const block =
+            const b =
                 blocks[i];
 
             dummy.position.set(
-                block.x,
-                block.y,
-                block.z
+                b.x,
+                b.y,
+                b.z
             );
 
             dummy.updateMatrix();
@@ -1699,8 +2765,8 @@ function rebuildChunk(
 
             mesh.setColorAt(
                 i,
-                getBlockTint(
-                    block
+                blockTint(
+                    b
                 )
             );
         }
@@ -1720,9 +2786,6 @@ function rebuildChunk(
 
         mesh.userData.chunkKey =
             chunk.key;
-
-        mesh.userData.blockType =
-            type;
 
         mesh.computeBoundingSphere();
 
@@ -1744,24 +2807,26 @@ function loadChunk(
     cx,
     cz
 ) {
-    const key =
-        chunkKey(
+    const k =
+        key2(
             cx,
             cz
         );
 
     if (
         loadedChunks.has(
-            key
+            k
         )
     ) {
         return loadedChunks.get(
-            key
+            k
         );
     }
 
     const chunk = {
-        key,
+        key:
+            k,
+
         cx,
         cz,
 
@@ -1779,7 +2844,7 @@ function loadChunk(
     };
 
     loadedChunks.set(
-        key,
+        k,
         chunk
     );
 
@@ -1795,11 +2860,11 @@ function loadChunk(
 }
 
 function unloadChunk(
-    key
+    k
 ) {
     const chunk =
         loadedChunks.get(
-            key
+            k
         );
 
     if (
@@ -1822,23 +2887,23 @@ function unloadChunk(
     }
 
     for (
-        const entityId
-        of Array.from(
-            chunk.entityIds
-        )
+        const id
+        of [
+            ...chunk.entityIds
+        ]
     ) {
         removeEntity(
-            entityId,
+            id,
             false
         );
     }
 
     loadedChunks.delete(
-        key
+        k
     );
 }
 
-function refreshLoadedChunks(
+function refreshChunks(
     force = false
 ) {
     if (
@@ -1847,47 +2912,47 @@ function refreshLoadedChunks(
         return;
     }
 
-    const playerCX =
-        worldToChunk(
+    const pcx =
+        chunkOf(
             camera.position.x
         );
 
-    const playerCZ =
-        worldToChunk(
+    const pcz =
+        chunkOf(
             camera.position.z
         );
 
     if (
         !force
         &&
-        playerCX ===
-        lastPlayerChunkX
+        pcx ===
+        lastChunkX
         &&
-        playerCZ ===
-        lastPlayerChunkZ
+        pcz ===
+        lastChunkZ
     ) {
         return;
     }
 
-    lastPlayerChunkX =
-        playerCX;
+    lastChunkX =
+        pcx;
 
-    lastPlayerChunkZ =
-        playerCZ;
+    lastChunkZ =
+        pcz;
 
     const needed =
         new Set();
 
     const radius =
         LOAD_DISTANCE +
-        0.35;
+        0.4;
 
     for (
         let dx =
             -LOAD_DISTANCE;
 
         dx <=
-        LOAD_DISTANCE;
+            LOAD_DISTANCE;
 
         dx++
     ) {
@@ -1896,13 +2961,17 @@ function refreshLoadedChunks(
                 -LOAD_DISTANCE;
 
             dz <=
-            LOAD_DISTANCE;
+                LOAD_DISTANCE;
 
             dz++
         ) {
             if (
-                dx * dx +
-                dz * dz >
+                dx *
+                dx
+                +
+                dz *
+                dz
+                >
                 radius *
                 radius
             ) {
@@ -1910,21 +2979,21 @@ function refreshLoadedChunks(
             }
 
             const cx =
-                playerCX +
+                pcx +
                 dx;
 
             const cz =
-                playerCZ +
+                pcz +
                 dz;
 
-            const key =
-                chunkKey(
+            const k =
+                key2(
                     cx,
                     cz
                 );
 
             needed.add(
-                key
+                k
             );
 
             loadChunk(
@@ -1935,46 +3004,33 @@ function refreshLoadedChunks(
     }
 
     for (
-        const key
-        of Array.from(
-            loadedChunks.keys()
-        )
+        const k
+        of [
+            ...loadedChunks.keys()
+        ]
     ) {
         if (
             !needed.has(
-                key
+                k
             )
         ) {
             unloadChunk(
-                key
+                k
             );
         }
     }
 }
 
-// =====================================================
-// BLOCK LOOKUP / EDITING
-// =====================================================
-
-function getLoadedBlock(
+function getBlock(
     x,
     y,
     z
 ) {
-    const chunk =
-        getChunkForWorld(
-            x,
-            z
-        );
-
-    if (
-        !chunk
-    ) {
-        return null;
-    }
-
-    return chunk.blocks.get(
-        blockKey(
+    return getChunkForWorld(
+        x,
+        z
+    )?.blocks.get(
+        key3(
             x,
             y,
             z
@@ -1982,19 +3038,19 @@ function getLoadedBlock(
     ) || null;
 }
 
-function blockExists(
-    x,
-    y,
-    z
-) {
-    return getLoadedBlock(
+const blockExists =
+    (
         x,
         y,
         z
-    ) !== null;
-}
+    ) =>
+        !!getBlock(
+            x,
+            y,
+            z
+        );
 
-function removeLoadedBlock(
+function removeBlock(
     x,
     y,
     z
@@ -2011,29 +3067,29 @@ function removeLoadedBlock(
         return null;
     }
 
-    const key =
-        blockKey(
+    const k =
+        key3(
             x,
             y,
             z
         );
 
-    const block =
+    const b =
         chunk.blocks.get(
-            key
+            k
         );
 
     if (
-        !block
+        !b
         ||
-        block.type ===
+        b.type ===
         "bedrock"
     ) {
         return null;
     }
 
     chunk.blocks.delete(
-        key
+        k
     );
 
     setWorldEdit(
@@ -2047,10 +3103,10 @@ function removeLoadedBlock(
         chunk
     );
 
-    return block;
+    return b;
 }
 
-function addLoadedBlock(
+function addBlock(
     x,
     y,
     z,
@@ -2058,12 +3114,17 @@ function addLoadedBlock(
 ) {
     const chunk =
         loadChunk(
-            worldToChunk(x),
-            worldToChunk(z)
+            chunkOf(
+                x
+            ),
+
+            chunkOf(
+                z
+            )
         );
 
-    const key =
-        blockKey(
+    const k =
+        key3(
             x,
             y,
             z
@@ -2071,14 +3132,14 @@ function addLoadedBlock(
 
     if (
         chunk.blocks.has(
-            key
+            k
         )
     ) {
         return false;
     }
 
     chunk.blocks.set(
-        key,
+        k,
 
         {
             x,
@@ -2102,14 +3163,13 @@ function addLoadedBlock(
     return true;
 }
 
-// =====================================================
-// PIXEL-ART ITEM ICONS
-// =====================================================
-
+// ============================================================
+// INVENTORY ICONS
+// ============================================================
 const iconCache =
     new Map();
 
-function createItemIcon(
+function itemIcon(
     type
 ) {
     if (
@@ -2133,12 +3193,49 @@ function createItemIcon(
     x.imageSmoothingEnabled =
         false;
 
-    x.clearRect(
-        0,
-        0,
-        16,
-        16
-    );
+    const blockIcon =
+        (
+            base,
+            detail
+        ) => {
+            x.fillStyle =
+                base;
+
+            x.fillRect(
+                2,
+                2,
+                12,
+                12
+            );
+
+            x.fillStyle =
+                detail;
+
+            for (
+                let i = 0;
+                i < 12;
+                i++
+            ) {
+                x.fillRect(
+                    3 +
+                    (
+                        i *
+                        5
+                    ) %
+                    10,
+
+                    3 +
+                    (
+                        i *
+                        7
+                    ) %
+                    10,
+
+                    1,
+                    1
+                );
+            }
+        };
 
     if (
         type ===
@@ -2163,71 +3260,15 @@ function createItemIcon(
             12,
             4
         );
-
-        x.fillStyle =
-            "#3f8730";
-
-        x.fillRect(
-            4,
-            6,
-            1,
-            2
-        );
-
-        x.fillRect(
-            10,
-            6,
-            1,
-            1
-        );
     }
 
     else if (
         type ===
         "dirt"
     ) {
-        x.fillStyle =
-            "#70492f";
-
-        x.fillRect(
-            2,
-            2,
-            12,
-            12
-        );
-
-        x.fillStyle =
-            "#986641";
-
-        x.fillRect(
-            4,
-            4,
-            2,
-            1
-        );
-
-        x.fillRect(
-            9,
-            7,
-            1,
-            2
-        );
-
-        x.fillStyle =
-            "#5c3a24";
-
-        x.fillRect(
-            6,
-            10,
-            2,
-            1
-        );
-
-        x.fillRect(
-            11,
-            4,
-            1,
-            1
+        blockIcon(
+            "#70492f",
+            "#986641"
         );
     }
 
@@ -2261,71 +3302,15 @@ function createItemIcon(
             1,
             14
         );
-
-        x.fillStyle =
-            "#8a603d";
-
-        x.fillRect(
-            7,
-            4,
-            1,
-            5
-        );
     }
 
     else if (
         type ===
         "leaves"
     ) {
-        x.fillStyle =
-            "#2e6d2c";
-
-        x.fillRect(
-            2,
-            2,
-            12,
-            12
-        );
-
-        x.fillStyle =
-            "#4a9141";
-
-        x.fillRect(
-            4,
-            4,
-            2,
-            2
-        );
-
-        x.fillRect(
-            10,
-            3,
-            1,
-            2
-        );
-
-        x.fillRect(
-            8,
-            10,
-            2,
-            1
-        );
-
-        x.fillStyle =
-            "#245822";
-
-        x.fillRect(
-            3,
-            9,
-            1,
-            2
-        );
-
-        x.fillRect(
-            11,
-            11,
-            2,
-            1
+        blockIcon(
+            "#2e6d2c",
+            "#4a9141"
         );
     }
 
@@ -2333,48 +3318,9 @@ function createItemIcon(
         type ===
         "stone"
     ) {
-        x.fillStyle =
-            "#686868";
-
-        x.fillRect(
-            2,
-            2,
-            12,
-            12
-        );
-
-        x.fillStyle =
-            "#8c8c8c";
-
-        x.fillRect(
-            4,
-            4,
-            3,
-            1
-        );
-
-        x.fillRect(
-            9,
-            9,
-            2,
-            2
-        );
-
-        x.fillStyle =
-            "#555";
-
-        x.fillRect(
-            10,
-            4,
-            2,
-            1
-        );
-
-        x.fillRect(
-            5,
-            11,
-            2,
-            1
+        blockIcon(
+            "#686868",
+            "#8c8c8c"
         );
     }
 
@@ -2415,29 +3361,45 @@ function createItemIcon(
             12,
             1
         );
+    }
 
-        x.fillStyle =
-            "#c58a50";
+    else if (
+        [
+            "coal",
+            "iron",
+            "gold",
+            "diamond"
+        ].includes(
+            type
+        )
+    ) {
+        const colors = {
+            coal: [
+                "#222",
+                "#080808"
+            ],
 
-        x.fillRect(
-            4,
-            3,
-            4,
-            1
-        );
+            iron: [
+                "#a36d4f",
+                "#d09a79"
+            ],
 
-        x.fillRect(
-            8,
-            7,
-            4,
-            1
-        );
+            gold: [
+                "#d7b42c",
+                "#ffe36b"
+            ],
 
-        x.fillRect(
-            3,
-            11,
-            5,
-            1
+            diamond: [
+                "#35c9c8",
+                "#9afff6"
+            ]
+        }[
+            type
+        ];
+
+        blockIcon(
+            colors[0],
+            colors[1]
         );
     }
 
@@ -2481,10 +3443,26 @@ function createItemIcon(
     }
 
     else if (
-        type ===
-        "axe"
+        type
+            .toLowerCase()
+            .includes(
+                "axe"
+            )
     ) {
-        // Proper pixel axe.
+        const tier =
+            type.startsWith(
+                "wood"
+            )
+
+                ? "#9a6a40"
+
+                : type.startsWith(
+                    "stone"
+                )
+
+                    ? "#888"
+
+                    : "#c7c7c7";
 
         x.fillStyle =
             "#6c4428";
@@ -2511,24 +3489,7 @@ function createItemIcon(
         );
 
         x.fillStyle =
-            "#9a6a40";
-
-        x.fillRect(
-            6,
-            10,
-            1,
-            4
-        );
-
-        x.fillRect(
-            7,
-            7,
-            1,
-            3
-        );
-
-        x.fillStyle =
-            "#808080";
+            tier;
 
         x.fillRect(
             8,
@@ -2550,33 +3511,32 @@ function createItemIcon(
             3,
             1
         );
-
-        x.fillStyle =
-            "#b0b0b0";
-
-        x.fillRect(
-            9,
-            2,
-            4,
-            1
-        );
-
-        x.fillRect(
-            12,
-            4,
-            1,
-            2
-        );
     }
 
     else if (
-        type ===
-        "pickaxe"
+        type
+            .toLowerCase()
+            .includes(
+                "pickaxe"
+            )
     ) {
-        // Proper pixel pickaxe.
+        const tier =
+            type.startsWith(
+                "wood"
+            )
+
+                ? "#9a6a40"
+
+                : type.startsWith(
+                    "stone"
+                )
+
+                    ? "#888"
+
+                    : "#c7c7c7";
 
         x.fillStyle =
-            "#7a7a7a";
+            tier;
 
         x.fillRect(
             2,
@@ -2596,16 +3556,6 @@ function createItemIcon(
             10,
             4,
             3,
-            1
-        );
-
-        x.fillStyle =
-            "#aaaaaa";
-
-        x.fillRect(
-            3,
-            2,
-            10,
             1
         );
 
@@ -2639,48 +3589,29 @@ function createItemIcon(
             2,
             4
         );
-
-        x.fillStyle =
-            "#9a6a40";
-
-        x.fillRect(
-            8,
-            4,
-            1,
-            3
-        );
-
-        x.fillRect(
-            5,
-            10,
-            1,
-            4
-        );
     }
 
     else if (
-        type ===
-        "beef"
-        ||
-        type ===
-        "pork"
-        ||
-        type ===
-        "mutton"
+        [
+            "beef",
+            "pork",
+            "mutton"
+        ].includes(
+            type
+        )
     ) {
         const base =
-            type === "beef"
-                ? "#7f2f25"
-                : type === "pork"
-                    ? "#c56f73"
-                    : "#8c4b3e";
+            type ===
+            "beef"
 
-        const light =
-            type === "beef"
-                ? "#b75a45"
-                : type === "pork"
-                    ? "#e99a9d"
-                    : "#c77b66";
+                ? "#7f2f25"
+
+                : type ===
+                "pork"
+
+                    ? "#c56f73"
+
+                    : "#8c4b3e";
 
         x.fillStyle =
             base;
@@ -2690,23 +3621,6 @@ function createItemIcon(
             4,
             10,
             8
-        );
-
-        x.fillStyle =
-            light;
-
-        x.fillRect(
-            5,
-            3,
-            6,
-            2
-        );
-
-        x.fillRect(
-            4,
-            11,
-            7,
-            2
         );
 
         x.fillStyle =
@@ -2731,26 +3645,17 @@ function createItemIcon(
     return url;
 }
 
-// =====================================================
-// INVENTORY / HOTBAR
-// =====================================================
-
-function addItemToInventory(
+function addItem(
     type,
     amount = 1
 ) {
     if (
-        !Object.prototype
-            .hasOwnProperty
-            .call(
-                inventory,
-                type
-            )
+        !(type in INVENTORY)
     ) {
         return;
     }
 
-    inventory[type] +=
+    INVENTORY[type] +=
         amount;
 
     if (
@@ -2758,17 +3663,17 @@ function addItemToInventory(
             type
         )
     ) {
-        const emptyIndex =
+        const i =
             hotbarItems.indexOf(
                 null
             );
 
         if (
-            emptyIndex !== -1
+            i !==
+            -1
         ) {
-            hotbarItems[
-                emptyIndex
-            ] = type;
+            hotbarItems[i] =
+                type;
         }
     }
 
@@ -2776,35 +3681,27 @@ function addItemToInventory(
     updateCraftingMenu();
 }
 
-function removeItemFromInventory(
+function removeItem(
     type,
     amount = 1
 ) {
     if (
-        !Object.prototype
-            .hasOwnProperty
-            .call(
-                inventory,
-                type
-            )
-    ) {
-        return false;
-    }
-
-    if (
-        inventory[type] <
+        !(type in INVENTORY)
+        ||
+        INVENTORY[type] <
         amount
     ) {
         return false;
     }
 
-    inventory[type] -=
+    INVENTORY[type] -=
         amount;
 
     if (
-        inventory[type] <= 0
+        INVENTORY[type] <=
+        0
     ) {
-        inventory[type] =
+        INVENTORY[type] =
             0;
 
         for (
@@ -2828,13 +3725,14 @@ function removeItemFromInventory(
     return true;
 }
 
-function assignSelectedHotbar(
+function assignHotbar(
     type
 ) {
     if (
         !type
         ||
-        inventory[type] <= 0
+        INVENTORY[type] <=
+        0
     ) {
         return;
     }
@@ -2854,195 +3752,192 @@ function assignSelectedHotbar(
     }
 
     hotbarItems[
-        selectedHotbarIndex
-    ] = type;
+        selectedHotbar
+    ] =
+        type;
 
     updateHotbar();
 }
 
 function updateHotbar() {
-    for (
-        let i = 0;
-        i < hotbarSlots.length;
-        i++
-    ) {
-        const slot =
-            hotbarSlots[i];
-
-        const type =
-            hotbarItems[i];
-
-        slot.classList.toggle(
-            "selected",
-            i ===
-            selectedHotbarIndex
-        );
-
-        slot.innerHTML =
-            "";
-
-        css(
+    hotbarSlots.forEach(
+        (
             slot,
+            i
+        ) => {
+            const type =
+                hotbarItems[i];
 
-            {
-                position:
-                    "relative",
+            slot.classList.toggle(
+                "selected",
+                i ===
+                selectedHotbar
+            );
 
-                display:
-                    "flex",
+            slot.innerHTML =
+                "";
 
-                alignItems:
-                    "center",
-
-                justifyContent:
-                    "center",
-
-                overflow:
-                    "hidden",
-
-                boxSizing:
-                    "border-box"
-            }
-        );
-
-        const number =
             css(
-                document.createElement(
-                    "div"
-                ),
+                slot,
 
                 {
                     position:
-                        "absolute",
+                        "relative",
 
-                    top:
-                        "3px",
+                    display:
+                        "flex",
 
-                    left:
-                        "5px",
+                    alignItems:
+                        "center",
 
-                    fontSize:
-                        "12px",
+                    justifyContent:
+                        "center",
 
-                    color:
-                        "white",
-
-                    textShadow:
-                        "1px 1px 0 #000",
-
-                    zIndex:
-                        "3"
-                }
-            );
-
-        number.textContent =
-            i + 1;
-
-        slot.appendChild(
-            number
-        );
-
-        if (
-            type ===
-            null
-        ) {
-            slot.title =
-                "Empty";
-
-            continue;
-        }
-
-        const icon =
-            css(
-                document.createElement(
-                    "div"
-                ),
-
-                {
-                    width:
-                        "34px",
-
-                    height:
-                        "34px",
-
-                    backgroundImage:
-                        `url(${createItemIcon(type)})`,
-
-                    backgroundSize:
-                        "100% 100%",
-
-                    imageRendering:
-                        "pixelated",
-
-                    border:
-                        "2px solid rgba(0,0,0,0.5)",
+                    overflow:
+                        "hidden",
 
                     boxSizing:
                         "border-box"
                 }
             );
 
-        slot.appendChild(
-            icon
-        );
+            const num =
+                css(
+                    document.createElement(
+                        "div"
+                    ),
 
-        const count =
-            css(
-                document.createElement(
-                    "div"
-                ),
+                    {
+                        position:
+                            "absolute",
 
-                {
-                    position:
-                        "absolute",
+                        top:
+                            "3px",
 
-                    right:
-                        "4px",
+                        left:
+                            "5px",
 
-                    bottom:
-                        "2px",
+                        fontSize:
+                            "12px",
 
-                    fontSize:
-                        "14px",
+                        color:
+                            "white",
 
-                    fontWeight:
-                        "bold",
+                        textShadow:
+                            "1px 1px #000",
 
-                    color:
-                        "white",
+                        zIndex:
+                            "3"
+                    }
+                );
 
-                    textShadow:
-                        "1px 1px 0 #000",
+            num.textContent =
+                i + 1;
 
-                    zIndex:
-                        "3"
-                }
+            slot.appendChild(
+                num
             );
 
-        count.textContent =
-            inventory[type];
+            if (
+                !type
+            ) {
+                slot.title =
+                    "Empty";
 
-        slot.appendChild(
-            count
-        );
+                return;
+            }
 
-        slot.title =
-            `${itemName(type)}: ${inventory[type]}`;
-    }
+            const icon =
+                css(
+                    document.createElement(
+                        "div"
+                    ),
+
+                    {
+                        width:
+                            "34px",
+
+                        height:
+                            "34px",
+
+                        backgroundImage:
+                            `url(${itemIcon(type)})`,
+
+                        backgroundSize:
+                            "100% 100%",
+
+                        imageRendering:
+                            "pixelated",
+
+                        border:
+                            "2px solid rgba(0,0,0,.5)",
+
+                        boxSizing:
+                            "border-box"
+                    }
+                );
+
+            slot.appendChild(
+                icon
+            );
+
+            const count =
+                css(
+                    document.createElement(
+                        "div"
+                    ),
+
+                    {
+                        position:
+                            "absolute",
+
+                        right:
+                            "4px",
+
+                        bottom:
+                            "2px",
+
+                        fontSize:
+                            "14px",
+
+                        fontWeight:
+                            "bold",
+
+                        color:
+                            "white",
+
+                        textShadow:
+                            "1px 1px #000",
+
+                        zIndex:
+                            "3"
+                    }
+                );
+
+            count.textContent =
+                INVENTORY[type];
+
+            slot.appendChild(
+                count
+            );
+
+            slot.title =
+                `${nameOf(type)}: ${INVENTORY[type]}`;
+        }
+    );
 
     const type =
         selectedItem();
 
-    blockNameLabel.textContent =
-        type === null
-            ? "EMPTY"
-            : `${itemName(type).toUpperCase()} x${inventory[type]}`;
+    itemLabel.textContent =
+        type
+            ? `${nameOf(type).toUpperCase()} x${INVENTORY[type]}`
+            : "EMPTY";
 }
 
-// =====================================================
+// ============================================================
 // CRAFTING MENU
-// =====================================================
-
+// ============================================================
 const craftingOverlay =
     css(
         document.createElement(
@@ -3060,7 +3955,7 @@ const craftingOverlay =
                 "0",
 
             background:
-                "rgba(0,0,0,0.62)",
+                "rgba(0,0,0,.64)",
 
             zIndex:
                 "1000",
@@ -3069,16 +3964,9 @@ const craftingOverlay =
                 "center",
 
             justifyContent:
-                "center",
-
-            fontFamily:
-                "inherit"
+                "center"
         }
     );
-
-document.body.appendChild(
-    craftingOverlay
-);
 
 const craftingPanel =
     css(
@@ -3088,10 +3976,10 @@ const craftingPanel =
 
         {
             width:
-                "min(780px, 90vw)",
+                "min(820px,92vw)",
 
             maxHeight:
-                "82vh",
+                "84vh",
 
             overflowY:
                 "auto",
@@ -3099,14 +3987,14 @@ const craftingPanel =
             background:
                 "#252525",
 
+            color:
+                "white",
+
             border:
                 "5px solid #111",
 
             boxShadow:
-                "inset 3px 3px 0 #555, inset -3px -3px 0 #080808, 0 10px 30px rgba(0,0,0,0.55)",
-
-            color:
-                "white",
+                "inset 3px 3px #555,inset -3px -3px #080808,0 10px 30px rgba(0,0,0,.55)",
 
             padding:
                 "24px",
@@ -3120,6 +4008,10 @@ craftingOverlay.appendChild(
     craftingPanel
 );
 
+document.body.appendChild(
+    craftingOverlay
+);
+
 function canCraft(
     recipe
 ) {
@@ -3128,19 +4020,20 @@ function canCraft(
     ).every(
         (
             [
-                type,
-                amount
+                t,
+                n
             ]
         ) =>
             (
-                inventory[type]
+                INVENTORY[t]
                 ||
                 0
-            ) >= amount
+            ) >=
+            n
     );
 }
 
-function craftRecipe(
+function craft(
     recipe
 ) {
     if (
@@ -3153,34 +4046,34 @@ function craftRecipe(
 
     for (
         const [
-            type,
-            amount
+            t,
+            n
         ]
         of Object.entries(
             recipe.input
         )
     ) {
-        inventory[type] -=
-            amount;
+        INVENTORY[t] -=
+            n;
     }
 
     for (
         const [
-            type,
-            amount
+            t,
+            n
         ]
         of Object.entries(
             recipe.output
         )
     ) {
-        inventory[type] =
+        INVENTORY[t] =
             (
-                inventory[type]
+                INVENTORY[t]
                 ||
                 0
             )
             +
-            amount;
+            n;
     }
 
     for (
@@ -3188,13 +4081,13 @@ function craftRecipe(
         i < hotbarItems.length;
         i++
     ) {
-        const type =
-            hotbarItems[i];
-
         if (
-            type
+            hotbarItems[i]
             &&
-            inventory[type] <= 0
+            INVENTORY[
+                hotbarItems[i]
+            ] <=
+            0
         ) {
             hotbarItems[i] =
                 null;
@@ -3202,27 +4095,27 @@ function craftRecipe(
     }
 
     for (
-        const type
+        const t
         of Object.keys(
             recipe.output
         )
     ) {
         if (
             !hotbarItems.includes(
-                type
+                t
             )
         ) {
-            const emptyIndex =
+            const i =
                 hotbarItems.indexOf(
                     null
                 );
 
             if (
-                emptyIndex !== -1
+                i !==
+                -1
             ) {
-                hotbarItems[
-                    emptyIndex
-                ] = type;
+                hotbarItems[i] =
+                    t;
             }
         }
     }
@@ -3249,7 +4142,7 @@ function updateCraftingMenu() {
 
             {
                 fontSize:
-                    "32px",
+                    "30px",
 
                 fontWeight:
                     "bold",
@@ -3257,20 +4150,13 @@ function updateCraftingMenu() {
                 textAlign:
                     "center",
 
-                marginBottom:
-                    "8px",
-
                 textShadow:
-                    "3px 3px 0 #000"
+                    "3px 3px #000"
             }
         );
 
     title.textContent =
         "INVENTORY / CRAFTING";
-
-    craftingPanel.appendChild(
-        title
-    );
 
     const hint =
         css(
@@ -3283,46 +4169,34 @@ function updateCraftingMenu() {
                     "center",
 
                 color:
-                    "#bdbdbd",
+                    "#bbb",
 
-                marginBottom:
-                    "22px",
-
-                fontSize:
-                    "15px"
+                margin:
+                    "8px 0 20px"
             }
         );
 
     hint.textContent =
-        "Press E to close • Click an item to put it in your selected hotbar slot";
+        "Press E to close • Click an item to put it in the selected hotbar slot";
 
-    craftingPanel.appendChild(
+    craftingPanel.append(
+        title,
         hint
     );
 
-    const inventoryTitle =
-        css(
-            document.createElement(
-                "div"
-            ),
-
-            {
-                fontSize:
-                    "21px",
-
-                marginBottom:
-                    "10px"
-            }
+    const invTitle =
+        document.createElement(
+            "h3"
         );
 
-    inventoryTitle.textContent =
+    invTitle.textContent =
         "INVENTORY";
 
     craftingPanel.appendChild(
-        inventoryTitle
+        invTitle
     );
 
-    const inventoryGrid =
+    const grid =
         css(
             document.createElement(
                 "div"
@@ -3333,13 +4207,13 @@ function updateCraftingMenu() {
                     "grid",
 
                 gridTemplateColumns:
-                    "repeat(auto-fit, minmax(145px, 1fr))",
+                    "repeat(auto-fit,minmax(145px,1fr))",
 
                 gap:
                     "8px",
 
                 marginBottom:
-                    "26px"
+                    "24px"
             }
         );
 
@@ -3349,7 +4223,7 @@ function updateCraftingMenu() {
             amount
         ]
         of Object.entries(
-            inventory
+            INVENTORY
         )
     ) {
         const card =
@@ -3401,7 +4275,7 @@ function updateCraftingMenu() {
                         "0 0 36px",
 
                     backgroundImage:
-                        `url(${createItemIcon(type)})`,
+                        `url(${itemIcon(type)})`,
 
                     backgroundSize:
                         "100% 100%",
@@ -3410,10 +4284,7 @@ function updateCraftingMenu() {
                         "pixelated",
 
                     border:
-                        "2px solid #111",
-
-                    boxSizing:
-                        "border-box"
+                        "2px solid #111"
                 }
             );
 
@@ -3423,10 +4294,7 @@ function updateCraftingMenu() {
             );
 
         label.textContent =
-            `${itemName(type)} x${amount}`;
-
-        label.style.fontSize =
-            "15px";
+            `${nameOf(type)} x${amount}`;
 
         card.append(
             icon,
@@ -3434,52 +4302,43 @@ function updateCraftingMenu() {
         );
 
         if (
-            amount > 0
+            amount >
+            0
         ) {
             card.addEventListener(
                 "click",
 
                 () =>
-                    assignSelectedHotbar(
+                    assignHotbar(
                         type
                     )
             );
         }
 
-        inventoryGrid.appendChild(
+        grid.appendChild(
             card
         );
     }
 
     craftingPanel.appendChild(
-        inventoryGrid
+        grid
     );
 
-    const recipesTitle =
-        css(
-            document.createElement(
-                "div"
-            ),
-
-            {
-                fontSize:
-                    "21px",
-
-                marginBottom:
-                    "10px"
-            }
+    const craftTitle =
+        document.createElement(
+            "h3"
         );
 
-    recipesTitle.textContent =
+    craftTitle.textContent =
         "CRAFTING";
 
     craftingPanel.appendChild(
-        recipesTitle
+        craftTitle
     );
 
     for (
         const recipe
-        of recipes
+        of RECIPES
     ) {
         const row =
             css(
@@ -3510,7 +4369,7 @@ function updateCraftingMenu() {
                         "14px",
 
                     marginBottom:
-                        "10px"
+                        "9px"
                 }
             );
 
@@ -3519,7 +4378,7 @@ function updateCraftingMenu() {
                 "div"
             );
 
-        const name =
+        const rn =
             css(
                 document.createElement(
                     "div"
@@ -3527,7 +4386,7 @@ function updateCraftingMenu() {
 
                 {
                     fontSize:
-                        "20px",
+                        "18px",
 
                     fontWeight:
                         "bold",
@@ -3537,23 +4396,27 @@ function updateCraftingMenu() {
                 }
             );
 
-        name.textContent =
+        rn.textContent =
             recipe.name.toUpperCase();
 
-        const description =
-            document.createElement(
-                "div"
+        const rd =
+            css(
+                document.createElement(
+                    "div"
+                ),
+
+                {
+                    color:
+                        "#ccc"
+                }
             );
 
-        description.textContent =
-            recipe.description;
-
-        description.style.color =
-            "#cfcfcf";
+        rd.textContent =
+            recipe.text;
 
         info.append(
-            name,
-            description
+            rn,
+            rd
         );
 
         const button =
@@ -3561,37 +4424,33 @@ function updateCraftingMenu() {
                 "button"
             );
 
-        const available =
+        button.textContent =
             canCraft(
                 recipe
-            );
-
-        button.textContent =
-            available
+            )
                 ? "CRAFT"
                 : "MISSING ITEMS";
 
         button.disabled =
-            !available;
+            !canCraft(
+                recipe
+            );
 
         css(
             button,
 
             {
                 minWidth:
-                    "135px",
+                    "140px",
 
                 padding:
-                    "12px 16px",
+                    "12px",
 
                 font:
                     "inherit",
 
                 fontWeight:
                     "bold",
-
-                fontSize:
-                    "16px",
 
                 color:
                     button.disabled
@@ -3617,7 +4476,7 @@ function updateCraftingMenu() {
             "click",
 
             () =>
-                craftRecipe(
+                craft(
                     recipe
                 )
         );
@@ -3633,7 +4492,7 @@ function updateCraftingMenu() {
     }
 }
 
-function setCraftingOpen(
+function setCrafting(
     open
 ) {
     craftingOpen =
@@ -3644,15 +4503,13 @@ function setCraftingOpen(
             ? "flex"
             : "none";
 
-    for (
-        const key
-        of Object.keys(
-            keys
-        )
-    ) {
-        keys[key] =
-            false;
-    }
+    Object.keys(
+        keys
+    ).forEach(
+        k =>
+            keys[k] =
+                false
+    );
 
     miningHeld =
         false;
@@ -3672,58 +4529,55 @@ function setCraftingOpen(
     }
 }
 
-// =====================================================
-// HEALTH / HUNGER
-// =====================================================
-
+// ============================================================
+// SURVIVAL
+// ============================================================
 function updateSurvivalHud() {
-    for (
-        let i = 0;
-        i < 10;
-        i++
-    ) {
-        const hp =
-            health -
-            i * 2;
+    const paint =
+        (
+            meter,
+            value
+        ) =>
+            meter.parts.forEach(
+                (
+                    p,
+                    i
+                ) => {
+                    const points =
+                        value -
+                        i *
+                        2;
 
-        healthMeter.parts[i].style.background =
-            hp >= 2
-                ? "#b92e2e"
-                : hp > 0
-                    ? "linear-gradient(to right,#b92e2e 50%,#3a2020 50%)"
-                    : "#3a2020";
+                    p.style.background =
+                        points >=
+                        2
 
-        const food =
-            hunger -
-            i * 2;
+                            ? p.dataset.filled
 
-        hungerMeter.parts[i].style.background =
-            food >= 2
-                ? "#c8872d"
-                : food > 0
-                    ? "linear-gradient(to right,#c8872d 50%,#3d2d1c 50%)"
-                    : "#3d2d1c";
-    }
+                            : points >
+                            0
+
+                                ? `linear-gradient(to right,${p.dataset.filled} 50%,${p.dataset.empty} 50%)`
+
+                                : p.dataset.empty;
+                }
+            );
+
+    paint(
+        healthMeter,
+        health
+    );
+
+    paint(
+        hungerMeter,
+        hunger
+    );
 
     healthMeter.label.textContent =
         `HEALTH ${health}`;
 
     hungerMeter.label.textContent =
         `HUNGER ${hunger}`;
-}
-
-function flashDamage() {
-    damageFlash.style.opacity =
-        "1";
-
-    setTimeout(
-        () => {
-            damageFlash.style.opacity =
-                "0";
-        },
-
-        90
-    );
 }
 
 function takeDamage(
@@ -3735,22 +4589,33 @@ function takeDamage(
             amount,
 
             0,
-            maxHealth
+            MAX_HEALTH
         );
 
-    flashDamage();
+    damageFlash.style.opacity =
+        "1";
+
+    setTimeout(
+        () =>
+            damageFlash.style.opacity =
+                "0",
+
+        90
+    );
+
     updateSurvivalHud();
 
     if (
-        health <= 0
+        health <=
+        0
     ) {
         respawnPlayer();
 
         health =
-            maxHealth;
+            MAX_HEALTH;
 
         hunger =
-            maxHunger;
+            MAX_HUNGER;
 
         updateSurvivalHud();
     }
@@ -3778,14 +4643,16 @@ function updateSurvival(
         hunger =
             Math.max(
                 0,
-                hunger - 1
+                hunger -
+                1
             );
 
         updateSurvivalHud();
     }
 
     if (
-        hunger <= 0
+        hunger <=
+        0
     ) {
         starvationTimer +=
             delta;
@@ -3809,10 +4676,11 @@ function updateSurvival(
     }
 
     if (
-        hunger >= 18
+        hunger >=
+        18
         &&
         health <
-        maxHealth
+        MAX_HEALTH
     ) {
         regenTimer +=
             delta;
@@ -3826,14 +4694,16 @@ function updateSurvival(
 
             health =
                 Math.min(
-                    maxHealth,
-                    health + 1
+                    MAX_HEALTH,
+                    health +
+                    1
                 );
 
             hunger =
                 Math.max(
                     0,
-                    hunger - 1
+                    hunger -
+                    1
                 );
 
             updateSurvivalHud();
@@ -3847,37 +4717,36 @@ function updateSurvival(
 }
 
 function eatSelectedFood() {
-    const type =
+    const t =
         selectedItem();
 
     if (
-        !foodValues[
-            type
-        ]
+        !FOOD[t]
     ) {
         return false;
     }
 
     if (
-        inventory[type] <= 0
+        INVENTORY[t] <=
+        0
         ||
         hunger >=
-        maxHunger
+        MAX_HUNGER
     ) {
         return true;
     }
 
-    removeItemFromInventory(
-        type,
+    removeItem(
+        t,
         1
     );
 
     hunger =
         Math.min(
-            maxHunger,
+            MAX_HUNGER,
 
             hunger +
-            foodValues[type]
+            FOOD[t]
         );
 
     updateSurvivalHud();
@@ -3885,10 +4754,9 @@ function eatSelectedFood() {
     return true;
 }
 
-// =====================================================
-// ENTITY SYSTEM
-// =====================================================
-
+// ============================================================
+// ENTITIES
+// ============================================================
 const entities =
     new Map();
 
@@ -3928,11 +4796,10 @@ function addEntityPart(
     entityId,
     size,
     color,
-    position
+    pos
 ) {
     const mesh =
         new THREE.Mesh(
-
             new THREE.BoxGeometry(
                 size.x,
                 size.y,
@@ -3945,9 +4812,9 @@ function addEntityPart(
         );
 
     mesh.position.set(
-        position.x,
-        position.y,
-        position.z
+        pos.x,
+        pos.y,
+        pos.z
     );
 
     mesh.userData.entityId =
@@ -3964,44 +4831,39 @@ function addEntityPart(
     return mesh;
 }
 
-// =====================================================
-// MOB MODELS
-// =====================================================
-
 function buildAnimalModel(
     type,
-    entityId
+    id
 ) {
-    const group =
+    const g =
         new THREE.Group();
 
     const part =
         (
             size,
             color,
-            position
+            pos
         ) =>
             addEntityPart(
-                group,
-                entityId,
+                g,
+                id,
                 size,
                 color,
-                position
+                pos
             );
 
-    // =================================================
+    // ========================================================
     // PIG
-    // =================================================
-
+    // ========================================================
     if (
         type ===
         "pig"
     ) {
         part(
             {
-                x: 1.25,
+                x: 0.82,
                 y: 0.72,
-                z: 0.78
+                z: 1.22
             },
 
             0xd77f86,
@@ -4015,24 +4877,24 @@ function buildAnimalModel(
 
         part(
             {
-                x: 0.62,
-                y: 0.58,
-                z: 0.58
+                x: 0.56,
+                y: 0.54,
+                z: 0.54
             },
 
             0xe58d94,
 
             {
                 x: 0,
-                y: 0.82,
-                z: 0.58
+                y: 0.78,
+                z: 0.88
             }
         );
 
         part(
             {
-                x: 0.42,
-                y: 0.25,
+                x: 0.36,
+                y: 0.22,
                 z: 0.18
             },
 
@@ -4041,88 +4903,84 @@ function buildAnimalModel(
             {
                 x: 0,
                 y: 0.72,
-                z: 0.92
+                z: 1.22
             }
         );
 
-        // Nostrils
-
         part(
             {
-                x: 0.06,
+                x: 0.07,
                 y: 0.07,
                 z: 0.03
             },
 
-            0x5e3035,
+            0x221111,
 
             {
-                x: -0.10,
-                y: 0.74,
-                z: 1.02
+                x: -0.15,
+                y: 0.84,
+                z: 1.16
             }
         );
 
         part(
             {
-                x: 0.06,
+                x: 0.07,
                 y: 0.07,
                 z: 0.03
             },
 
-            0x5e3035,
+            0x221111,
 
             {
-                x: 0.10,
-                y: 0.74,
-                z: 1.02
+                x: 0.15,
+                y: 0.84,
+                z: 1.16
             }
         );
 
-        // Ears
-
         part(
             {
-                x: 0.16,
-                y: 0.18,
-                z: 0.12
+                x: 0.12,
+                y: 0.16,
+                z: 0.10
             },
 
             0xc66e76,
 
             {
-                x: -0.22,
-                y: 1.12,
-                z: 0.62
+                x: -0.18,
+                y: 1.08,
+                z: 0.83
             }
         );
 
         part(
             {
-                x: 0.16,
-                y: 0.18,
-                z: 0.12
+                x: 0.12,
+                y: 0.16,
+                z: 0.10
             },
 
             0xc66e76,
 
             {
-                x: 0.22,
-                y: 1.12,
-                z: 0.62
+                x: 0.18,
+                y: 1.08,
+                z: 0.83
             }
         );
 
         for (
             const [
-                px,
-                pz
+                x,
+                z
             ]
             of [
-                [-0.42, -0.24],
-                [0.42, -0.24],
-                [-0.42, 0.24],
-                [0.42, 0.24]
+                [-0.24, -0.35],
+                [0.24, -0.35],
+                [-0.24, 0.35],
+                [0.24, 0.35]
             ]
         ) {
             part(
@@ -4135,79 +4993,74 @@ function buildAnimalModel(
                 0xb76269,
 
                 {
-                    x: px,
+                    x,
                     y: 0.24,
-                    z: pz
+                    z
                 }
             );
         }
     }
 
-    // =================================================
+    // ========================================================
     // COW
-    // =================================================
-
+    // ========================================================
     else if (
         type ===
         "cow"
     ) {
         part(
             {
-                x: 1.42,
-                y: 0.82,
-                z: 0.82
+                x: 0.86,
+                y: 0.84,
+                z: 1.38
             },
 
             0x6a432d,
 
             {
                 x: 0,
-                y: 0.82,
+                y: 0.84,
                 z: 0
             }
         );
 
-        // Patches
-
         part(
             {
-                x: 0.34,
+                x: 0.05,
                 y: 0.28,
-                z: 0.05
+                z: 0.34
             },
 
             0xd9cbb5,
 
             {
-                x: -0.34,
+                x: -0.44,
                 y: 0.95,
-                z: 0.41
+                z: 0.18
             }
         );
 
         part(
             {
-                x: 0.30,
+                x: 0.05,
                 y: 0.24,
-                z: 0.05
+                z: 0.28
             },
 
             0xd9cbb5,
 
             {
-                x: 0.32,
-                y: 0.70,
-                z: -0.41
+                x: 0.44,
+                y: 0.72,
+                z: -0.22
             }
         );
 
-        // Head
-
         part(
             {
-                x: 0.62,
-                y: 0.62,
-                z: 0.58
+                x: 0.58,
+                y: 0.60,
+                z: 0.56
             },
 
             0x754a31,
@@ -4215,16 +5068,14 @@ function buildAnimalModel(
             {
                 x: 0,
                 y: 0.90,
-                z: 0.63
+                z: 0.96
             }
         );
 
-        // Muzzle
-
         part(
             {
-                x: 0.46,
-                y: 0.25,
+                x: 0.42,
+                y: 0.22,
                 z: 0.18
             },
 
@@ -4233,121 +5084,116 @@ function buildAnimalModel(
             {
                 x: 0,
                 y: 0.77,
-                z: 0.96
+                z: 1.28
             }
         );
 
-        // Ears
-
         part(
             {
-                x: 0.22,
-                y: 0.14,
-                z: 0.15
+                x: 0.07,
+                y: 0.07,
+                z: 0.03
             },
 
-            0x5a3927,
+            0x1d1410,
 
             {
-                x: -0.38,
-                y: 1.12,
-                z: 0.60
+                x: -0.15,
+                y: 0.93,
+                z: 1.20
             }
         );
 
         part(
             {
-                x: 0.22,
-                y: 0.14,
-                z: 0.15
+                x: 0.07,
+                y: 0.07,
+                z: 0.03
             },
 
-            0x5a3927,
+            0x1d1410,
 
             {
-                x: 0.38,
-                y: 1.12,
-                z: 0.60
+                x: 0.15,
+                y: 0.93,
+                z: 1.20
             }
         );
 
-        // Tiny horns
-
         part(
             {
-                x: 0.10,
-                y: 0.18,
-                z: 0.10
+                x: 0.09,
+                y: 0.16,
+                z: 0.09
             },
 
             0xe4dac5,
 
             {
-                x: -0.22,
-                y: 1.26,
-                z: 0.60
+                x: -0.18,
+                y: 1.22,
+                z: 0.93
             }
         );
 
         part(
             {
-                x: 0.10,
-                y: 0.18,
-                z: 0.10
+                x: 0.09,
+                y: 0.16,
+                z: 0.09
             },
 
             0xe4dac5,
 
             {
-                x: 0.22,
-                y: 1.26,
-                z: 0.60
+                x: 0.18,
+                y: 1.22,
+                z: 0.93
             }
         );
 
         for (
             const [
-                px,
-                pz
+                x,
+                z
             ]
             of [
-                [-0.47, -0.25],
-                [0.47, -0.25],
-                [-0.47, 0.25],
-                [0.47, 0.25]
+                [-0.26, -0.42],
+                [0.26, -0.42],
+                [-0.26, 0.42],
+                [0.26, 0.42]
             ]
         ) {
             part(
                 {
-                    x: 0.20,
+                    x: 0.18,
                     y: 0.62,
-                    z: 0.20
+                    z: 0.18
                 },
 
-                0x3c2b23,
+                0x2e211b,
 
                 {
-                    x: px,
+                    x,
                     y: 0.31,
-                    z: pz
+                    z
                 }
             );
         }
     }
 
-    // =================================================
+    // ========================================================
     // SHEEP
-    // =================================================
-
+    // ========================================================
     else if (
         type ===
         "sheep"
     ) {
         part(
             {
-                x: 1.42,
-                y: 0.95,
-                z: 0.88
+                x: 0.92,
+                y: 0.94,
+                z: 1.34
             },
 
             0xe6e2d7,
@@ -4359,46 +5205,26 @@ function buildAnimalModel(
             }
         );
 
-        // Wool lumps
-
         part(
             {
-                x: 0.42,
-                y: 0.20,
-                z: 0.50
+                x: 0.70,
+                y: 0.18,
+                z: 0.92
             },
 
             0xf2efe8,
 
             {
-                x: -0.35,
-                y: 1.35,
+                x: 0,
+                y: 1.34,
                 z: 0
             }
         );
 
         part(
             {
-                x: 0.42,
-                y: 0.20,
-                z: 0.50
-            },
-
-            0xf2efe8,
-
-            {
-                x: 0.35,
-                y: 1.35,
-                z: 0
-            }
-        );
-
-        // Face
-
-        part(
-            {
-                x: 0.54,
-                y: 0.58,
+                x: 0.46,
+                y: 0.56,
                 z: 0.48
             },
 
@@ -4406,265 +5232,291 @@ function buildAnimalModel(
 
             {
                 x: 0,
-                y: 0.88,
-                z: 0.63
+                y: 0.84,
+                z: 0.92
             }
         );
 
-        // Wool forehead
-
         part(
             {
-                x: 0.60,
-                y: 0.18,
-                z: 0.42
+                x: 0.52,
+                y: 0.16,
+                z: 0.36
             },
 
             0xf0ede5,
 
             {
                 x: 0,
-                y: 1.20,
-                z: 0.59
-            }
-        );
-
-        // Ears
-
-        part(
-            {
-                x: 0.20,
-                y: 0.13,
-                z: 0.13
-            },
-
-            0x3b3a38,
-
-            {
-                x: -0.34,
-                y: 1.04,
-                z: 0.62
+                y: 1.12,
+                z: 0.90
             }
         );
 
         part(
             {
-                x: 0.20,
-                y: 0.13,
-                z: 0.13
+                x: 0.07,
+                y: 0.07,
+                z: 0.03
             },
 
-            0x3b3a38,
+            0x111111,
 
             {
-                x: 0.34,
-                y: 1.04,
-                z: 0.62
+                x: -0.13,
+                y: 0.92,
+                z: 1.16
+            }
+        );
+
+        part(
+            {
+                x: 0.07,
+                y: 0.07,
+                z: 0.03
+            },
+
+            0x111111,
+
+            {
+                x: 0.13,
+                y: 0.92,
+                z: 1.16
             }
         );
 
         for (
             const [
-                px,
-                pz
+                x,
+                z
             ]
             of [
-                [-0.45, -0.25],
-                [0.45, -0.25],
-                [-0.45, 0.25],
-                [0.45, 0.25]
+                [-0.24, -0.40],
+                [0.24, -0.40],
+                [-0.24, 0.40],
+                [0.24, 0.40]
             ]
         ) {
             part(
                 {
-                    x: 0.18,
-                    y: 0.56,
-                    z: 0.18
+                    x: 0.16,
+                    y: 0.54,
+                    z: 0.16
                 },
 
-                0x3f3e3b,
+                0x2f2f2f,
 
                 {
-                    x: px,
-                    y: 0.28,
-                    z: pz
+                    x,
+                    y: 0.27,
+                    z
                 }
             );
         }
     }
 
-    // =================================================
+    // ========================================================
     // MIMIC
-    // =================================================
-
+    // ========================================================
     else if (
         type ===
         "mimic"
     ) {
-        // Dark torso.
-        // From far away it should almost look like scenery.
+        part(
+            {
+                x: 0.60,
+                y: 0.92,
+                z: 0.40
+            },
+
+            0x181513,
+
+            {
+                x: 0,
+                y: 1.22,
+                z: 0
+            }
+        );
 
         part(
             {
                 x: 0.82,
-                y: 1.18,
-                z: 0.56
+                y: 0.24,
+                z: 0.48
             },
 
-            0x171513,
+            0x27211e,
 
             {
                 x: 0,
-                y: 1.18,
-                z: 0
+                y: 1.73,
+                z: -0.06
             }
         );
 
-        // Hunched shoulders.
-
         part(
             {
-                x: 0.94,
-                y: 0.32,
-                z: 0.62
+                x: 0.40,
+                y: 0.42,
+                z: 0.34
             },
 
-            0x211c19,
+            0x201b18,
 
             {
                 x: 0,
-                y: 1.82,
+                y: 1.67,
+                z: 0.34
+            }
+        );
+
+        part(
+            {
+                x: 0.30,
+                y: 0.20,
+                z: 0.12
+            },
+
+            0x0d0b0a,
+
+            {
+                x: 0,
+                y: 1.56,
+                z: 0.55
+            }
+        );
+
+        part(
+            {
+                x: 0.055,
+                y: 0.055,
+                z: 0.025
+            },
+
+            0xc40000,
+
+            {
+                x: -0.09,
+                y: 1.70,
+                z: 0.53
+            }
+        );
+
+        part(
+            {
+                x: 0.055,
+                y: 0.055,
+                z: 0.025
+            },
+
+            0xc40000,
+
+            {
+                x: 0.09,
+                y: 1.70,
+                z: 0.53
+            }
+        );
+
+        part(
+            {
+                x: 0.11,
+                y: 0.92,
+                z: 0.11
+            },
+
+            0x11100f,
+
+            {
+                x: -0.43,
+                y: 1.08,
                 z: 0.02
             }
         );
 
-        // Almost-black face.
-
         part(
             {
-                x: 0.66,
-                y: 0.44,
-                z: 0.08
+                x: 0.11,
+                y: 0.92,
+                z: 0.11
             },
 
-            0x090909,
+            0x11100f,
 
             {
-                x: 0,
-                y: 1.50,
-                z: 0.31
+                x: 0.43,
+                y: 1.08,
+                z: 0.02
             }
         );
 
-        // Tiny red eyes.
+        part(
+            {
+                x: 0.13,
+                y: 0.14,
+                z: 0.16
+            },
+
+            0x080808,
+
+            {
+                x: -0.43,
+                y: 0.57,
+                z: 0.09
+            }
+        );
 
         part(
             {
-                x: 0.09,
-                y: 0.09,
-                z: 0.04
+                x: 0.13,
+                y: 0.14,
+                z: 0.16
             },
 
-            0xb30000,
+            0x080808,
+
+            {
+                x: 0.43,
+                y: 0.57,
+                z: 0.09
+            }
+        );
+
+        part(
+            {
+                x: 0.13,
+                y: 1.08,
+                z: 0.13
+            },
+
+            0x0d0c0b,
 
             {
                 x: -0.17,
-                y: 1.56,
-                z: 0.36
+                y: 0.54,
+                z: -0.02
             }
         );
 
         part(
             {
-                x: 0.09,
-                y: 0.09,
-                z: 0.04
+                x: 0.13,
+                y: 1.08,
+                z: 0.13
             },
 
-            0xb30000,
+            0x0d0c0b,
 
             {
                 x: 0.17,
-                y: 1.56,
-                z: 0.36
-            }
-        );
-
-        // Long skinny legs.
-
-        part(
-            {
-                x: 0.16,
-                y: 1.05,
-                z: 0.16
-            },
-
-            0x0d0c0b,
-
-            {
-                x: -0.24,
-                y: 0.52,
-                z: 0
-            }
-        );
-
-        part(
-            {
-                x: 0.16,
-                y: 1.05,
-                z: 0.16
-            },
-
-            0x0d0c0b,
-
-            {
-                x: 0.24,
-                y: 0.52,
-                z: 0
-            }
-        );
-
-        // Dangling arms.
-
-        part(
-            {
-                x: 0.12,
-                y: 0.88,
-                z: 0.12
-            },
-
-            0x100e0d,
-
-            {
-                x: -0.50,
-                y: 1.03,
-                z: 0
-            }
-        );
-
-        part(
-            {
-                x: 0.12,
-                y: 0.88,
-                z: 0.12
-            },
-
-            0x100e0d,
-
-            {
-                x: 0.50,
-                y: 1.03,
-                z: 0
+                y: 0.54,
+                z: -0.02
             }
         );
     }
 
-    return group;
+    return g;
 }
-
-// =====================================================
-// ENTITY STATS / SPAWNING
-// =====================================================
 
 function entityStats(
     type
@@ -4674,8 +5526,11 @@ function entityStats(
         "cow"
     ) {
         return {
-            health: 4,
-            speed: 0.75
+            health:
+                5,
+
+            speed:
+                0.75
         };
     }
 
@@ -4684,8 +5539,11 @@ function entityStats(
         "pig"
     ) {
         return {
-            health: 3,
-            speed: 0.9
+            health:
+                4,
+
+            speed:
+                0.9
         };
     }
 
@@ -4694,18 +5552,24 @@ function entityStats(
         "sheep"
     ) {
         return {
-            health: 3,
-            speed: 0.7
+            health:
+                4,
+
+            speed:
+                0.7
         };
     }
 
     return {
-        health: 8,
-        speed: 0.8
+        health:
+            10,
+
+        speed:
+            1.0
     };
 }
 
-function canEntityStandAt(
+function canEntityStand(
     x,
     z
 ) {
@@ -4719,16 +5583,26 @@ function canEntityStandAt(
             z
         );
 
-    const ground =
-        getTerrainHeight(
+    const g =
+        terrainHeight(
             rx,
             rz
         );
 
-    return !blockExists(
-        rx,
-        ground + 1,
-        rz
+    return (
+        !blockExists(
+            rx,
+            g + 1,
+            rz
+        )
+
+        &&
+
+        !insideEntrance(
+            rx,
+            g,
+            rz
+        )
     );
 }
 
@@ -4736,43 +5610,38 @@ function spawnEntityForChunk(
     chunk
 ) {
     const r =
-        coordinateRandom(
-            chunk.cx * 31 + 7,
-            chunk.cz * 47 + 11
+        hash2(
+            chunk.cx,
+            chunk.cz,
+            505
         );
 
     let type =
-        null;
+        r <
+        0.11
+
+            ? "cow"
+
+            : r <
+            0.22
+
+                ? "pig"
+
+                : r <
+                0.33
+
+                    ? "sheep"
+
+                    : r <
+                    0.365
+
+                        ? "mimic"
+
+                        : null;
 
     if (
-        r < 0.11
+        !type
     ) {
-        type =
-            "cow";
-    }
-
-    else if (
-        r < 0.22
-    ) {
-        type =
-            "pig";
-    }
-
-    else if (
-        r < 0.33
-    ) {
-        type =
-            "sheep";
-    }
-
-    else if (
-        r < 0.365
-    ) {
-        type =
-            "mimic";
-    }
-
-    else {
         return;
     }
 
@@ -4791,64 +5660,75 @@ function spawnEntityForChunk(
         return;
     }
 
-    let spawnX =
+    let x =
         chunk.cx *
         CHUNK_SIZE +
-        4;
+        8;
 
-    let spawnZ =
+    let z =
         chunk.cz *
         CHUNK_SIZE +
-        4;
+        8;
 
     for (
-        let attempt = 0;
-        attempt < 6;
-        attempt++
+        let a = 0;
+        a < 8;
+        a++
     ) {
-        const rx =
-            coordinateRandom(
-                chunk.cx * 67 +
-                attempt * 13,
-
-                chunk.cz * 71 +
-                attempt * 17
-            );
-
-        const rz =
-            coordinateRandom(
-                chunk.cx * 73 +
-                attempt * 19,
-
-                chunk.cz * 79 +
-                attempt * 23
-            );
-
-        spawnX =
+        x =
             chunk.cx *
             CHUNK_SIZE +
             2 +
             Math.floor(
-                rx * 12
+                hash2(
+                    chunk.cx +
+                    a *
+                    13,
+
+                    chunk.cz,
+
+                    506
+                ) *
+                12
             );
 
-        spawnZ =
+        z =
             chunk.cz *
             CHUNK_SIZE +
             2 +
             Math.floor(
-                rz * 12
+                hash2(
+                    chunk.cx,
+
+                    chunk.cz +
+                    a *
+                    17,
+
+                    507
+                ) *
+                12
             );
 
         if (
             Math.hypot(
-                spawnX,
-                spawnZ - 8
-            ) > 8
+                x,
+                z - 8
+            ) >
+            10
+
             &&
-            canEntityStandAt(
-                spawnX,
-                spawnZ
+
+            canEntityStand(
+                x,
+                z
+            )
+
+            &&
+
+            !nearStructure(
+                x,
+                z,
+                5
             )
         ) {
             break;
@@ -4856,9 +5736,9 @@ function spawnEntityForChunk(
     }
 
     if (
-        !canEntityStandAt(
-            spawnX,
-            spawnZ
+        !canEntityStand(
+            x,
+            z
         )
     ) {
         return;
@@ -4876,26 +5756,27 @@ function spawnEntityForChunk(
         );
 
     group.position.set(
-        spawnX,
+        x,
 
-        getTerrainHeight(
+        terrainHeight(
             Math.round(
-                spawnX
+                x
             ),
 
             Math.round(
-                spawnZ
+                z
             )
-        ) + 0.5,
+        ) +
+        0.5,
 
-        spawnZ
+        z
     );
 
     scene.add(
         group
     );
 
-    const entity = {
+    const e = {
         id,
         type,
         group,
@@ -4910,27 +5791,27 @@ function spawnEntityForChunk(
             stats.speed,
 
         direction:
-            coordinateRandom(
-                spawnX + 99,
-                spawnZ - 71
-            )
-            *
-            Math.PI
-            *
+            hash2(
+                x,
+                z,
+                508
+            ) *
+            Math.PI *
             2,
 
-        wanderTimer:
-            1
-            +
-            coordinateRandom(
-                spawnX + 4,
-                spawnZ + 9
-            ) * 3,
+        wander:
+            1 +
+            hash2(
+                x,
+                z,
+                509
+            ) *
+            3,
 
         attackCooldown:
             0,
 
-        fleeTimer:
+        flee:
             0,
 
         chunkKey:
@@ -4939,7 +5820,7 @@ function spawnEntityForChunk(
 
     entities.set(
         id,
-        entity
+        e
     );
 
     chunk.entityIds.add(
@@ -4948,114 +5829,118 @@ function spawnEntityForChunk(
 }
 
 function removeEntity(
-    entityId,
+    id,
     killed = false
 ) {
-    const entity =
+    const e =
         entities.get(
-            entityId
+            id
         );
 
     if (
-        !entity
+        !e
     ) {
         return;
     }
 
-    entity.group.traverse(
-        obj => {
+    e.group.traverse(
+        o => {
             if (
-                obj.isMesh
+                o.isMesh
             ) {
                 entityHitMeshes.delete(
-                    obj
+                    o
                 );
             }
         }
     );
 
     scene.remove(
-        entity.group
+        e.group
     );
 
-    const chunk =
-        loadedChunks.get(
-            entity.chunkKey
+    loadedChunks
+        .get(
+            e.chunkKey
+        )
+        ?.entityIds
+        .delete(
+            id
         );
-
-    if (
-        chunk
-    ) {
-        chunk.entityIds.delete(
-            entityId
-        );
-    }
 
     entities.delete(
-        entityId
+        id
     );
 
     if (
         killed
     ) {
         killedEntityIds.add(
-            entityId
+            id
         );
     }
 }
 
 function transferEntityChunk(
-    entity
+    e
 ) {
-    const newKey =
-        chunkKey(
-            worldToChunk(
-                entity.group.position.x
+    const k =
+        key2(
+            chunkOf(
+                e.group.position.x
             ),
 
-            worldToChunk(
-                entity.group.position.z
+            chunkOf(
+                e.group.position.z
             )
         );
 
     if (
-        newKey ===
-        entity.chunkKey
+        k ===
+        e.chunkKey
         ||
         !loadedChunks.has(
-            newKey
+            k
         )
     ) {
         return;
     }
 
-    const oldChunk =
-        loadedChunks.get(
-            entity.chunkKey
+    loadedChunks
+        .get(
+            e.chunkKey
+        )
+        ?.entityIds
+        .delete(
+            e.id
         );
 
-    const newChunk =
-        loadedChunks.get(
-            newKey
+    loadedChunks
+        .get(
+            k
+        )
+        .entityIds
+        .add(
+            e.id
         );
 
-    if (
-        oldChunk
-    ) {
-        oldChunk.entityIds.delete(
-            entity.id
-        );
-    }
-
-    newChunk.entityIds.add(
-        entity.id
-    );
-
-    entity.chunkKey =
-        newKey;
+    e.chunkKey =
+        k;
 }
 
-function getTargetEntity() {
+const raycaster =
+    new THREE.Raycaster();
+
+const screenCenter =
+    new THREE.Vector2(
+        0,
+        0
+    );
+
+raycaster.far =
+    6;
+
+function targetEntity() {
     raycaster.setFromCamera(
         screenCenter,
         camera
@@ -5063,9 +5948,9 @@ function getTargetEntity() {
 
     const hits =
         raycaster.intersectObjects(
-            Array.from(
-                entityHitMeshes
-            ),
+            [
+                ...entityHitMeshes
+            ],
 
             false
         );
@@ -5074,19 +5959,18 @@ function getTargetEntity() {
         const hit
         of hits
     ) {
-        const id =
-            hit.object.userData.entityId;
-
-        const entity =
+        const e =
             entities.get(
-                id
+                hit.object.userData.entityId
             );
 
         if (
-            entity
+            e
         ) {
             return {
-                entity,
+                entity:
+                    e,
+
                 hit
             };
         }
@@ -5096,174 +5980,194 @@ function getTargetEntity() {
 }
 
 function killEntity(
-    entity
+    e
 ) {
     if (
-        entity.type ===
+        e.type ===
         "cow"
     ) {
-        addItemToInventory(
+        addItem(
             "beef",
             2
         );
     }
 
     else if (
-        entity.type ===
+        e.type ===
         "pig"
     ) {
-        addItemToInventory(
+        addItem(
             "pork",
             2
         );
     }
 
     else if (
-        entity.type ===
+        e.type ===
         "sheep"
     ) {
-        addItemToInventory(
+        addItem(
             "mutton",
             1
         );
     }
 
-    else if (
-        entity.type ===
-        "mimic"
-    ) {
-        addItemToInventory(
-            "craftingWood",
-            2
-        );
-
-        addItemToInventory(
-            "stone",
+    else {
+        addItem(
+            "coal",
             1
         );
+
+        if (
+            Math.random() <
+            0.35
+        ) {
+            addItem(
+                "iron",
+                1
+            );
+        }
     }
 
     removeEntity(
-        entity.id,
+        e.id,
         true
     );
 }
 
+let attackCooldown =
+    0;
+
 function attackEntity(
-    entity
+    e
 ) {
     if (
-        playerAttackCooldown >
+        attackCooldown >
         0
     ) {
         return;
     }
 
-    playerAttackCooldown =
-        0.3;
+    attackCooldown =
+        0.28;
 
     const tool =
         selectedItem();
 
-    let damage =
-        1;
+    const damage =
+        isAxe(
+            tool
+        )
 
-    if (
-        tool ===
-        "axe"
-    ) {
-        damage =
-            2.5;
-    }
+            ? 2 +
+            axeTier(
+                tool
+            ) *
+            0.6
 
-    else if (
-        tool ===
-        "pickaxe"
-    ) {
-        damage =
-            2;
-    }
+            : isPickaxe(
+                tool
+            )
 
-    entity.health -=
+                ? 1.8 +
+                pickTier(
+                    tool
+                ) *
+                0.45
+
+                : 1;
+
+    e.health -=
         damage;
 
     if (
-        entity.type !==
+        e.type !==
         "mimic"
     ) {
-        const dx =
-            entity.group.position.x -
-            camera.position.x;
-
-        const dz =
-            entity.group.position.z -
-            camera.position.z;
-
-        entity.direction =
+        e.direction =
             Math.atan2(
-                dx,
-                dz
+                e.group.position.x -
+                camera.position.x,
+
+                e.group.position.z -
+                camera.position.z
             );
 
-        entity.fleeTimer =
+        e.flee =
             2;
     }
 
     if (
-        entity.health <=
+        e.health <=
         0
     ) {
         killEntity(
-            entity
+            e
         );
     }
 }
 
-function entityCanMoveTo(
-    entity,
-    nextX,
-    nextZ
+function entityCanMove(
+    e,
+    nx,
+    nz
 ) {
-    const currentGround =
-        getTerrainHeight(
+    const a =
+        terrainHeight(
             Math.round(
-                entity.group.position.x
+                e.group.position.x
             ),
 
             Math.round(
-                entity.group.position.z
+                e.group.position.z
             )
         );
 
-    const nextGround =
-        getTerrainHeight(
+    const b =
+        terrainHeight(
             Math.round(
-                nextX
+                nx
             ),
 
             Math.round(
-                nextZ
+                nz
             )
         );
 
     if (
         Math.abs(
-            nextGround -
-            currentGround
-        ) > 1
+            b -
+            a
+        ) >
+        1
+
+        ||
+
+        insideEntrance(
+            Math.round(
+                nx
+            ),
+
+            b,
+
+            Math.round(
+                nz
+            )
+        )
     ) {
         return false;
     }
 
     return !blockExists(
         Math.round(
-            nextX
+            nx
         ),
 
-        nextGround + 1,
+        b +
+        1,
 
         Math.round(
-            nextZ
+            nz
         )
     );
 }
@@ -5272,79 +6176,99 @@ function updateEntities(
     delta
 ) {
     for (
-        const entity
-        of Array.from(
-            entities.values()
-        )
+        const e
+        of [
+            ...entities.values()
+        ]
     ) {
-        entity.attackCooldown =
+        e.attackCooldown =
             Math.max(
                 0,
-                entity.attackCooldown - delta
+                e.attackCooldown -
+                delta
             );
 
-        entity.fleeTimer =
+        e.flee =
             Math.max(
                 0,
-                entity.fleeTimer - delta
+                e.flee -
+                delta
             );
 
         const dx =
             camera.position.x -
-            entity.group.position.x;
+            e.group.position.x;
 
         const dz =
             camera.position.z -
-            entity.group.position.z;
+            e.group.position.z;
 
-        const distance =
+        const dist =
             Math.hypot(
                 dx,
                 dz
             );
 
         let speed =
-            entity.speed;
+            e.speed;
 
-        let direction =
-            entity.direction;
+        let dir =
+            e.direction;
 
-        if (
-            entity.type ===
+        const mimicAggro =
+            e.type ===
             "mimic"
             &&
-            distance <
-            16
+            dist <
+            (
+                isNight
+                    ? 22
+                    : 9
+            );
+
+        if (
+            mimicAggro
         ) {
-            direction =
+            dir =
                 Math.atan2(
                     dx,
                     dz
                 );
 
             speed =
-                distance < 8
-                    ? 2.8
-                    : 1.8;
+                isNight
+
+                    ? (
+                        dist <
+                        8
+
+                            ? 3.2
+
+                            : 2.25
+                    )
+
+                    : 1.7;
 
             if (
-                distance <
+                dist <
                 1.45
                 &&
-                entity.attackCooldown <=
+                e.attackCooldown <=
                 0
             ) {
-                entity.attackCooldown =
-                    1.1;
+                e.attackCooldown =
+                    1.0;
 
                 takeDamage(
-                    2
+                    isNight
+                        ? 3
+                        : 2
                 );
             }
         }
 
         else if (
-            entity.fleeTimer >
+            e.flee >
             0
         ) {
             speed =
@@ -5352,72 +6276,67 @@ function updateEntities(
         }
 
         else {
-            entity.wanderTimer -=
+            e.wander -=
                 delta;
 
             if (
-                entity.wanderTimer <=
+                e.wander <=
                 0
             ) {
-                entity.direction +=
+                e.direction +=
                     (
                         Math.random()
                         -
                         0.5
-                    ) * 2.4;
+                    ) *
+                    2.2;
 
-                entity.wanderTimer =
+                e.wander =
                     1.5 +
-                    Math.random() * 3;
+                    Math.random() *
+                    3;
             }
 
-            direction =
-                entity.direction;
+            dir =
+                e.direction;
         }
 
-        const nextX =
-            entity.group.position.x
-            +
+        const nx =
+            e.group.position.x +
             Math.sin(
-                direction
-            )
-            *
-            speed
-            *
+                dir
+            ) *
+            speed *
             delta;
 
-        const nextZ =
-            entity.group.position.z
-            +
+        const nz =
+            e.group.position.z +
             Math.cos(
-                direction
-            )
-            *
-            speed
-            *
+                dir
+            ) *
+            speed *
             delta;
 
         if (
-            entityCanMoveTo(
-                entity,
-                nextX,
-                nextZ
+            entityCanMove(
+                e,
+                nx,
+                nz
             )
         ) {
-            entity.group.position.x =
-                nextX;
+            e.group.position.x =
+                nx;
 
-            entity.group.position.z =
-                nextZ;
+            e.group.position.z =
+                nz;
 
-            entity.direction =
-                direction;
+            e.direction =
+                dir;
         }
 
         else {
-            entity.direction +=
-                Math.PI
-                *
+            e.direction +=
+                Math.PI *
                 (
                     0.5 +
                     Math.random() *
@@ -5425,176 +6344,167 @@ function updateEntities(
                 );
         }
 
-        entity.group.position.y =
-            getTerrainHeight(
+        e.group.position.y =
+            terrainHeight(
                 Math.round(
-                    entity.group.position.x
+                    e.group.position.x
                 ),
 
                 Math.round(
-                    entity.group.position.z
+                    e.group.position.z
                 )
-            )
-            +
+            ) +
             0.5;
 
-        entity.group.rotation.y =
-            direction;
+        e.group.rotation.y =
+            dir;
 
         if (
-            entity.type ===
+            e.type ===
             "mimic"
             &&
-            distance <
-            16
+            mimicAggro
         ) {
-            entity.group.rotation.z =
+            e.group.rotation.z =
                 Math.sin(
                     performance.now() *
                     0.012
-                )
-                *
-                0.025;
+                ) *
+                0.035;
         }
 
         transferEntityChunk(
-            entity
+            e
         );
     }
 }
 
-// =====================================================
-// COLLISION
-// =====================================================
-
+// ============================================================
+// COLLISION / MOVEMENT
+// ============================================================
 function playerCollides(
-    testX,
-    testY,
-    testZ
+    x,
+    y,
+    z
 ) {
-    const feetY =
-        testY -
-        eyeHeight;
+    const feet =
+        y -
+        EYE_HEIGHT;
 
-    const playerMinX =
-        testX -
-        playerRadius;
+    const minX =
+        x -
+        PLAYER_RADIUS;
 
-    const playerMaxX =
-        testX +
-        playerRadius;
+    const maxX =
+        x +
+        PLAYER_RADIUS;
 
-    const playerMinZ =
-        testZ -
-        playerRadius;
+    const minZ =
+        z -
+        PLAYER_RADIUS;
 
-    const playerMaxZ =
-        testZ +
-        playerRadius;
+    const maxZ =
+        z +
+        PLAYER_RADIUS;
 
-    const playerMinY =
-        feetY +
+    const minY =
+        feet +
         0.06;
 
-    const playerMaxY =
-        feetY +
-        playerHeight -
+    const maxY =
+        feet +
+        PLAYER_HEIGHT -
         0.05;
 
-    const minBlockX =
-        Math.ceil(
-            playerMinX -
-            0.5
-        );
-
-    const maxBlockX =
-        Math.floor(
-            playerMaxX +
-            0.5
-        );
-
-    const minBlockY =
-        Math.ceil(
-            playerMinY -
-            0.5
-        );
-
-    const maxBlockY =
-        Math.floor(
-            playerMaxY +
-            0.5
-        );
-
-    const minBlockZ =
-        Math.ceil(
-            playerMinZ -
-            0.5
-        );
-
-    const maxBlockZ =
-        Math.floor(
-            playerMaxZ +
-            0.5
-        );
-
     for (
-        let x = minBlockX;
-        x <= maxBlockX;
-        x++
+        let bx =
+            Math.ceil(
+                minX -
+                0.5
+            );
+
+        bx <=
+            Math.floor(
+                maxX +
+                0.5
+            );
+
+        bx++
     ) {
         for (
-            let y = minBlockY;
-            y <= maxBlockY;
-            y++
+            let by =
+                Math.ceil(
+                    minY -
+                    0.5
+                );
+
+            by <=
+                Math.floor(
+                    maxY +
+                    0.5
+                );
+
+            by++
         ) {
             for (
-                let z = minBlockZ;
-                z <= maxBlockZ;
-                z++
+                let bz =
+                    Math.ceil(
+                        minZ -
+                        0.5
+                    );
+
+                bz <=
+                    Math.floor(
+                        maxZ +
+                        0.5
+                    );
+
+                bz++
             ) {
                 if (
                     !blockExists(
-                        x,
-                        y,
-                        z
+                        bx,
+                        by,
+                        bz
                     )
                 ) {
                     continue;
                 }
 
-                const overlapsX =
-                    playerMaxX >
-                    x - 0.5
-
-                    &&
-
-                    playerMinX <
-                    x + 0.5;
-
-                const overlapsY =
-                    playerMaxY >
-                    y - 0.5
-
-                    &&
-
-                    playerMinY <
-                    y + 0.5;
-
-                const overlapsZ =
-                    playerMaxZ >
-                    z - 0.5
-
-                    &&
-
-                    playerMinZ <
-                    z + 0.5;
-
                 if (
-                    overlapsX
+                    maxX >
+                    bx -
+                    0.5
+
                     &&
-                    overlapsY
+
+                    minX <
+                    bx +
+                    0.5
+
                     &&
-                    overlapsZ
+
+                    maxY >
+                    by -
+                    0.5
+
+                    &&
+
+                    minY <
+                    by +
+                    0.5
+
+                    &&
+
+                    maxZ >
+                    bz -
+                    0.5
+
+                    &&
+
+                    minZ <
+                    bz +
+                    0.5
                 ) {
                     return true;
                 }
@@ -5605,78 +6515,65 @@ function playerCollides(
     return false;
 }
 
-function blockWouldHitPlayer(
+function blockHitsPlayer(
     x,
     y,
     z
 ) {
-    const feetY =
+    const feet =
         camera.position.y -
-        eyeHeight;
-
-    const minX =
-        camera.position.x -
-        playerRadius;
-
-    const maxX =
-        camera.position.x +
-        playerRadius;
-
-    const minY =
-        feetY +
-        0.06;
-
-    const maxY =
-        feetY +
-        playerHeight -
-        0.05;
-
-    const minZ =
-        camera.position.z -
-        playerRadius;
-
-    const maxZ =
-        camera.position.z +
-        playerRadius;
+        EYE_HEIGHT;
 
     return (
-        maxX >
-        x - 0.5
+        camera.position.x +
+        PLAYER_RADIUS >
+        x -
+        0.5
 
         &&
 
-        minX <
-        x + 0.5
+        camera.position.x -
+        PLAYER_RADIUS <
+        x +
+        0.5
 
         &&
 
-        maxY >
-        y - 0.5
+        feet +
+        PLAYER_HEIGHT -
+        0.05 >
+        y -
+        0.5
 
         &&
 
-        minY <
-        y + 0.5
+        feet +
+        0.06 <
+        y +
+        0.5
 
         &&
 
-        maxZ >
-        z - 0.5
+        camera.position.z +
+        PLAYER_RADIUS >
+        z -
+        0.5
 
         &&
 
-        minZ <
-        z + 0.5
+        camera.position.z -
+        PLAYER_RADIUS <
+        z +
+        0.5
     );
 }
 
-function moveHorizontalAxis(
+function moveAxis(
     axis,
     amount
 ) {
     if (
-        amount ===
-        0
+        !amount
     ) {
         return;
     }
@@ -5698,63 +6595,57 @@ function moveHorizontalAxis(
         i < steps;
         i++
     ) {
-        let testX =
+        let x =
             camera.position.x;
 
-        let testZ =
+        let z =
             camera.position.z;
 
         if (
             axis ===
             "x"
         ) {
-            testX +=
+            x +=
                 step;
         }
 
-        if (
-            axis ===
-            "z"
-        ) {
-            testZ +=
+        else {
+            z +=
                 step;
         }
 
         if (
             !playerCollides(
-                testX,
+                x,
                 camera.position.y,
-                testZ
+                z
             )
         ) {
             camera.position.x =
-                testX;
+                x;
 
             camera.position.z =
-                testZ;
+                z;
 
             continue;
         }
 
-        const raisedY =
+        const up =
             camera.position.y +
             1.01;
 
         if (
             !playerCollides(
-                testX,
-                raisedY,
-                testZ
+                x,
+                up,
+                z
             )
         ) {
-            camera.position.x =
-                testX;
-
-            camera.position.y =
-                raisedY;
-
-            camera.position.z =
-                testZ;
+            camera.position.set(
+                x,
+                up,
+                z
+            );
 
             verticalVelocity =
                 0;
@@ -5773,8 +6664,7 @@ function moveVertical(
     amount
 ) {
     if (
-        amount ===
-        0
+        !amount
     ) {
         return;
     }
@@ -5796,14 +6686,14 @@ function moveVertical(
         i < steps;
         i++
     ) {
-        const testY =
+        const y =
             camera.position.y +
             step;
 
         if (
             playerCollides(
                 camera.position.x,
-                testY,
+                y,
                 camera.position.z
             )
         ) {
@@ -5822,283 +6712,9 @@ function moveVertical(
         }
 
         camera.position.y =
-            testY;
+            y;
     }
 }
-
-// =====================================================
-// TARGETING / MINING / PLACING
-// =====================================================
-
-function getTargetBlock() {
-    raycaster.setFromCamera(
-        screenCenter,
-        camera
-    );
-
-    const hits =
-        raycaster.intersectObjects(
-            Array.from(
-                interactiveMeshes
-            ),
-
-            false
-        );
-
-    for (
-        const hit
-        of hits
-    ) {
-        if (
-            hit.instanceId ===
-            undefined
-        ) {
-            continue;
-        }
-
-        const block =
-            hit.object
-                .userData
-                .blocks[
-                    hit.instanceId
-                ];
-
-        if (
-            block
-        ) {
-            return {
-                block,
-                hit
-            };
-        }
-    }
-
-    return null;
-}
-
-function updateMining(
-    delta
-) {
-    if (
-        !miningHeld
-        ||
-        craftingOpen
-    ) {
-        resetMining();
-        return;
-    }
-
-    const blockTarget =
-        getTargetBlock();
-
-    const entityTarget =
-        getTargetEntity();
-
-    if (
-        entityTarget
-        &&
-        (
-            !blockTarget
-            ||
-            entityTarget.hit.distance <
-            blockTarget.hit.distance
-        )
-    ) {
-        resetMining();
-        return;
-    }
-
-    if (
-        !blockTarget
-        ||
-        blockTarget.block.type ===
-        "bedrock"
-    ) {
-        resetMining();
-        return;
-    }
-
-    const key =
-        blockKey(
-            blockTarget.block.x,
-            blockTarget.block.y,
-            blockTarget.block.z
-        );
-
-    if (
-        key !==
-        miningTargetKey
-    ) {
-        miningTargetKey =
-            key;
-
-        miningProgress =
-            0;
-    }
-
-    const requiredTime =
-        getMiningTime(
-            blockTarget.block.type
-        );
-
-    if (
-        !Number.isFinite(
-            requiredTime
-        )
-    ) {
-        resetMining();
-        return;
-    }
-
-    miningProgress +=
-        delta;
-
-    const percent =
-        Math.min(
-            1,
-            miningProgress /
-            requiredTime
-        );
-
-    miningHud.style.display =
-        "block";
-
-    miningFill.style.width =
-        `${percent * 100}%`;
-
-    if (
-        miningProgress >=
-        requiredTime
-    ) {
-        const removed =
-            removeLoadedBlock(
-                blockTarget.block.x,
-                blockTarget.block.y,
-                blockTarget.block.z
-            );
-
-        if (
-            removed
-        ) {
-            addItemToInventory(
-                removed.type,
-                1
-            );
-        }
-
-        miningTargetKey =
-            null;
-
-        miningProgress =
-            0;
-
-        miningFill.style.width =
-            "0%";
-    }
-}
-
-function placeTargetBlock() {
-    if (
-        craftingOpen
-    ) {
-        return;
-    }
-
-    const target =
-        getTargetBlock();
-
-    if (
-        !target
-        ||
-        !target.hit.face
-    ) {
-        return;
-    }
-
-    const type =
-        selectedItem();
-
-    if (
-        !type
-        ||
-        !placeableTypes.has(
-            type
-        )
-        ||
-        inventory[type] <= 0
-    ) {
-        return;
-    }
-
-    const normal =
-        target.hit.face.normal;
-
-    const placeX =
-        target.block.x +
-        Math.round(
-            normal.x
-        );
-
-    const placeY =
-        target.block.y +
-        Math.round(
-            normal.y
-        );
-
-    const placeZ =
-        target.block.z +
-        Math.round(
-            normal.z
-        );
-
-    if (
-        placeY <
-        bedrockY
-        ||
-        placeY >
-        maxBuildY
-    ) {
-        return;
-    }
-
-    if (
-        blockExists(
-            placeX,
-            placeY,
-            placeZ
-        )
-    ) {
-        return;
-    }
-
-    if (
-        blockWouldHitPlayer(
-            placeX,
-            placeY,
-            placeZ
-        )
-    ) {
-        return;
-    }
-
-    if (
-        addLoadedBlock(
-            placeX,
-            placeY,
-            placeZ,
-            type
-        )
-    ) {
-        removeItemFromInventory(
-            type,
-            1
-        );
-    }
-}
-
-// =====================================================
-// MOVEMENT / RESPAWN
-// =====================================================
 
 function updateMovement(
     delta
@@ -6135,13 +6751,13 @@ function updateMovement(
             )
         );
 
-    const movement =
+    const m =
         new THREE.Vector3();
 
     if (
         keys.KeyW
     ) {
-        movement.add(
+        m.add(
             forward
         );
     }
@@ -6149,7 +6765,7 @@ function updateMovement(
     if (
         keys.KeyS
     ) {
-        movement.sub(
+        m.sub(
             forward
         );
     }
@@ -6157,7 +6773,7 @@ function updateMovement(
     if (
         keys.KeyD
     ) {
-        movement.add(
+        m.add(
             right
         );
     }
@@ -6165,40 +6781,39 @@ function updateMovement(
     if (
         keys.KeyA
     ) {
-        movement.sub(
+        m.sub(
             right
         );
     }
 
     if (
-        movement.lengthSq() >
-        0
+        m.lengthSq()
     ) {
-        movement
+        m
             .normalize()
             .multiplyScalar(
-                moveSpeed *
+                MOVE_SPEED *
                 delta
             );
 
-        moveHorizontalAxis(
+        moveAxis(
             "x",
-            movement.x
+            m.x
         );
 
-        moveHorizontalAxis(
+        moveAxis(
             "z",
-            movement.z
+            m.z
         );
     }
 
-    refreshLoadedChunks();
+    refreshChunks();
 
     onGround =
         false;
 
     verticalVelocity -=
-        gravity *
+        GRAVITY *
         delta;
 
     moveVertical(
@@ -6208,7 +6823,7 @@ function updateMovement(
 
     if (
         camera.position.y <
-        bedrockY -
+        BEDROCK_Y -
         12
     ) {
         respawnPlayer();
@@ -6216,26 +6831,26 @@ function updateMovement(
 }
 
 function respawnPlayer() {
-    const spawnX =
+    const x =
         0;
 
-    const spawnZ =
+    const z =
         8;
 
-    const spawnY =
-        getTerrainHeight(
-            spawnX,
-            spawnZ
+    const y =
+        terrainHeight(
+            x,
+            z
         );
 
     camera.position.set(
-        spawnX,
+        x,
 
-        spawnY +
+        y +
         0.5 +
-        eyeHeight,
+        EYE_HEIGHT,
 
-        spawnZ
+        z
     );
 
     verticalVelocity =
@@ -6246,15 +6861,450 @@ function respawnPlayer() {
 
     resetMining();
 
-    refreshLoadedChunks(
+    refreshChunks(
         true
     );
 }
 
-// =====================================================
-// CONTROLS
-// =====================================================
+// ============================================================
+// MINING / PLACING
+// ============================================================
+let miningHeld = false;
+let miningTarget = null;
+let miningProgress = 0;
 
+function targetBlock() {
+    raycaster.setFromCamera(
+        screenCenter,
+        camera
+    );
+
+    const hits =
+        raycaster.intersectObjects(
+            [
+                ...interactiveMeshes
+            ],
+
+            false
+        );
+
+    for (
+        const hit
+        of hits
+    ) {
+        if (
+            hit.instanceId ===
+            undefined
+        ) {
+            continue;
+        }
+
+        const b =
+            hit.object.userData.blocks[
+                hit.instanceId
+            ];
+
+        if (
+            b
+        ) {
+            return {
+                block:
+                    b,
+
+                hit
+            };
+        }
+    }
+
+    return null;
+}
+
+function resetMining() {
+    miningTarget =
+        null;
+
+    miningProgress =
+        0;
+
+    miningFill.style.width =
+        "0%";
+
+    miningBar.style.display =
+        "none";
+}
+
+function miningTime(
+    blockType
+) {
+    const tool =
+        selectedItem();
+
+    if (
+        blockType ===
+        "bedrock"
+    ) {
+        return Infinity;
+    }
+
+    if (
+        blockType ===
+        "leaves"
+    ) {
+        return 0.45;
+    }
+
+    if (
+        blockType ===
+        "grass"
+        ||
+        blockType ===
+        "dirt"
+    ) {
+        return 0.85;
+    }
+
+    if (
+        blockType ===
+        "wood"
+        ||
+        blockType ===
+        "craftingWood"
+    ) {
+        return isAxe(
+            tool
+        )
+
+            ? [
+                0,
+                1,
+                0.72,
+                0.5
+            ][
+                axeTier(
+                    tool
+                )
+            ]
+
+            : 3;
+    }
+
+    if (
+        [
+            "stone",
+            "coalOre",
+            "ironOre",
+            "goldOre",
+            "diamondOre"
+        ].includes(
+            blockType
+        )
+    ) {
+        if (
+            !isPickaxe(
+                tool
+            )
+        ) {
+            return 5;
+        }
+
+        return [
+            0,
+            3,
+            2,
+            1.35
+        ][
+            pickTier(
+                tool
+            )
+        ];
+    }
+
+    return 2;
+}
+
+function blockDrop(
+    type
+) {
+    if (
+        type ===
+        "coalOre"
+    ) {
+        return "coal";
+    }
+
+    if (
+        type ===
+        "ironOre"
+    ) {
+        return "iron";
+    }
+
+    if (
+        type ===
+        "goldOre"
+    ) {
+        return "gold";
+    }
+
+    if (
+        type ===
+        "diamondOre"
+    ) {
+        return "diamond";
+    }
+
+    return type;
+}
+
+function canHarvest(
+    type
+) {
+    const tier =
+        pickTier(
+            selectedItem()
+        );
+
+    if (
+        type ===
+        "diamondOre"
+        ||
+        type ===
+        "goldOre"
+    ) {
+        return tier >=
+            2;
+    }
+
+    if (
+        type ===
+        "ironOre"
+    ) {
+        return tier >=
+            1;
+    }
+
+    return true;
+}
+
+function updateMining(
+    delta
+) {
+    if (
+        !miningHeld
+        ||
+        craftingOpen
+    ) {
+        resetMining();
+
+        return;
+    }
+
+    const bt =
+        targetBlock();
+
+    const et =
+        targetEntity();
+
+    if (
+        et
+        &&
+        (
+            !bt
+            ||
+            et.hit.distance <
+            bt.hit.distance
+        )
+    ) {
+        resetMining();
+
+        return;
+    }
+
+    if (
+        !bt
+        ||
+        bt.block.type ===
+        "bedrock"
+    ) {
+        resetMining();
+
+        return;
+    }
+
+    const k =
+        key3(
+            bt.block.x,
+            bt.block.y,
+            bt.block.z
+        );
+
+    if (
+        k !==
+        miningTarget
+    ) {
+        miningTarget =
+            k;
+
+        miningProgress =
+            0;
+    }
+
+    const need =
+        miningTime(
+            bt.block.type
+        );
+
+    miningProgress +=
+        delta;
+
+    miningBar.style.display =
+        "block";
+
+    miningFill.style.width =
+        `${Math.min(
+            1,
+
+            miningProgress /
+            need
+        ) * 100}%`;
+
+    if (
+        miningProgress >=
+        need
+    ) {
+        const removed =
+            removeBlock(
+                bt.block.x,
+                bt.block.y,
+                bt.block.z
+            );
+
+        if (
+            removed
+            &&
+            canHarvest(
+                removed.type
+            )
+        ) {
+            addItem(
+                blockDrop(
+                    removed.type
+                ),
+
+                1
+            );
+        }
+
+        resetMining();
+    }
+}
+
+function placeBlock() {
+    const t =
+        selectedItem();
+
+    const target =
+        targetBlock();
+
+    if (
+        !t
+        ||
+        !PLACEABLE.has(
+            t
+        )
+        ||
+        !target?.hit.face
+        ||
+        INVENTORY[t] <=
+        0
+    ) {
+        return;
+    }
+
+    const n =
+        target.hit.face.normal;
+
+    const x =
+        target.block.x +
+        Math.round(
+            n.x
+        );
+
+    const y =
+        target.block.y +
+        Math.round(
+            n.y
+        );
+
+    const z =
+        target.block.z +
+        Math.round(
+            n.z
+        );
+
+    if (
+        y <
+        BEDROCK_Y
+        ||
+        y >
+        MAX_BUILD_Y
+        ||
+        blockExists(
+            x,
+            y,
+            z
+        )
+        ||
+        blockHitsPlayer(
+            x,
+            y,
+            z
+        )
+    ) {
+        return;
+    }
+
+    const blockType =
+        t ===
+        "coal"
+
+            ? "coalOre"
+
+            : t ===
+            "iron"
+
+                ? "ironOre"
+
+                : t ===
+                "gold"
+
+                    ? "goldOre"
+
+                    : t ===
+                    "diamond"
+
+                        ? "diamondOre"
+
+                        : t;
+
+    if (
+        addBlock(
+            x,
+            y,
+            z,
+            blockType
+        )
+    ) {
+        removeItem(
+            t,
+            1
+        );
+    }
+}
+
+// ============================================================
+// CONTROLS
+// ============================================================
 function setupControls() {
     renderer.domElement.addEventListener(
         "click",
@@ -6275,8 +7325,8 @@ function setupControls() {
     renderer.domElement.addEventListener(
         "contextmenu",
 
-        event =>
-            event.preventDefault()
+        e =>
+            e.preventDefault()
     );
 
     document.addEventListener(
@@ -6298,7 +7348,7 @@ function setupControls() {
     document.addEventListener(
         "mousemove",
 
-        event => {
+        e => {
             if (
                 craftingOpen
                 ||
@@ -6308,27 +7358,23 @@ function setupControls() {
                 return;
             }
 
-            const sensitivity =
-                0.002;
-
             yaw -=
-                event.movementX *
-                sensitivity;
-
-            pitch -=
-                event.movementY *
-                sensitivity;
-
-            const maxPitch =
-                Math.PI /
-                2 -
-                0.01;
+                e.movementX *
+                0.002;
 
             pitch =
                 clamp(
-                    pitch,
-                    -maxPitch,
-                    maxPitch
+                    pitch -
+                    e.movementY *
+                    0.002,
+
+                    -Math.PI /
+                    2 +
+                    0.01,
+
+                    Math.PI /
+                    2 -
+                    0.01
                 );
 
             camera.rotation.y =
@@ -6342,16 +7388,16 @@ function setupControls() {
     document.addEventListener(
         "keydown",
 
-        event => {
+        e => {
             if (
-                event.code ===
+                e.code ===
                 "KeyE"
                 &&
-                !event.repeat
+                !e.repeat
             ) {
-                event.preventDefault();
+                e.preventDefault();
 
-                setCraftingOpen(
+                setCrafting(
                     !craftingOpen
                 );
 
@@ -6365,21 +7411,21 @@ function setupControls() {
             }
 
             keys[
-                event.code
+                e.code
             ] =
                 true;
 
             if (
-                event.code ===
+                e.code ===
                 "Space"
             ) {
-                event.preventDefault();
+                e.preventDefault();
 
                 if (
                     onGround
                 ) {
                     verticalVelocity =
-                        jumpPower;
+                        JUMP_POWER;
 
                     onGround =
                         false;
@@ -6387,24 +7433,26 @@ function setupControls() {
             }
 
             if (
-                event.code.startsWith(
+                e.code.startsWith(
                     "Digit"
                 )
             ) {
-                const number =
+                const n =
                     Number(
-                        event.code.substring(
+                        e.code.slice(
                             5
                         )
                     );
 
                 if (
-                    number >= 1
+                    n >=
+                    1
                     &&
-                    number <= 7
+                    n <=
+                    7
                 ) {
-                    selectedHotbarIndex =
-                        number -
+                    selectedHotbar =
+                        n -
                         1;
 
                     updateHotbar();
@@ -6417,18 +7465,17 @@ function setupControls() {
     document.addEventListener(
         "keyup",
 
-        event => {
+        e =>
             keys[
-                event.code
+                e.code
             ] =
-                false;
-        }
+                false
     );
 
     renderer.domElement.addEventListener(
         "mousedown",
 
-        event => {
+        e => {
             if (
                 craftingOpen
                 ||
@@ -6439,27 +7486,27 @@ function setupControls() {
             }
 
             if (
-                event.button ===
+                e.button ===
                 0
             ) {
-                const blockTarget =
-                    getTargetBlock();
+                const bt =
+                    targetBlock();
 
-                const entityTarget =
-                    getTargetEntity();
+                const et =
+                    targetEntity();
 
                 if (
-                    entityTarget
+                    et
                     &&
                     (
-                        !blockTarget
+                        !bt
                         ||
-                        entityTarget.hit.distance <
-                        blockTarget.hit.distance
+                        et.hit.distance <
+                        bt.hit.distance
                     )
                 ) {
                     attackEntity(
-                        entityTarget.entity
+                        et.entity
                     );
 
                     miningHeld =
@@ -6477,13 +7524,13 @@ function setupControls() {
             }
 
             if (
-                event.button ===
+                e.button ===
                 2
             ) {
                 if (
                     !eatSelectedFood()
                 ) {
-                    placeTargetBlock();
+                    placeBlock();
                 }
             }
         }
@@ -6492,9 +7539,9 @@ function setupControls() {
     document.addEventListener(
         "mouseup",
 
-        event => {
+        e => {
             if (
-                event.button ===
+                e.button ===
                 0
             ) {
                 miningHeld =
@@ -6508,7 +7555,7 @@ function setupControls() {
     renderer.domElement.addEventListener(
         "wheel",
 
-        event => {
+        e => {
             if (
                 craftingOpen
                 ||
@@ -6518,26 +7565,29 @@ function setupControls() {
                 return;
             }
 
-            event.preventDefault();
+            e.preventDefault();
 
-            selectedHotbarIndex +=
-                event.deltaY > 0
+            selectedHotbar +=
+                e.deltaY >
+                0
+
                     ? 1
+
                     : -1;
 
             if (
-                selectedHotbarIndex >=
-                7
+                selectedHotbar >
+                6
             ) {
-                selectedHotbarIndex =
+                selectedHotbar =
                     0;
             }
 
             if (
-                selectedHotbarIndex <
+                selectedHotbar <
                 0
             ) {
-                selectedHotbarIndex =
+                selectedHotbar =
                     6;
             }
 
@@ -6552,14 +7602,22 @@ function setupControls() {
     );
 }
 
-// =====================================================
+// ============================================================
 // START / LOOP
-// =====================================================
-
+// ============================================================
 playButton.addEventListener(
     "click",
 
     () => {
+        if (
+            started
+        ) {
+            return;
+        }
+
+        started =
+            true;
+
         startScreen.style.display =
             "none";
 
@@ -6574,17 +7632,14 @@ function startGame() {
     scene =
         new THREE.Scene();
 
-    const skyColor =
-        0x72bfe7;
-
     scene.background =
         new THREE.Color(
-            skyColor
+            0x72bfe7
         );
 
     scene.fog =
         new THREE.Fog(
-            skyColor,
+            0x72bfe7,
             FOG_NEAR,
             FOG_FAR
         );
@@ -6593,8 +7648,8 @@ function startGame() {
         new THREE.PerspectiveCamera(
             75,
 
-            window.innerWidth /
-            window.innerHeight,
+            innerWidth /
+            innerHeight,
 
             0.1,
             500
@@ -6610,13 +7665,13 @@ function startGame() {
         });
 
     renderer.setSize(
-        window.innerWidth,
-        window.innerHeight
+        innerWidth,
+        innerHeight
     );
 
     renderer.setPixelRatio(
         Math.min(
-            window.devicePixelRatio,
+            devicePixelRatio,
             2
         )
     );
@@ -6625,27 +7680,30 @@ function startGame() {
         renderer.domElement
     );
 
-    const sunlight =
+    sunLight =
         new THREE.DirectionalLight(
             0xffffff,
             1.25
         );
 
-    sunlight.position.set(
+    sunLight.position.set(
         40,
         70,
         25
     );
 
     scene.add(
-        sunlight
+        sunLight
     );
 
-    scene.add(
+    ambientLight =
         new THREE.AmbientLight(
             0xffffff,
             0.45
-        )
+        );
+
+    scene.add(
+        ambientLight
     );
 
     createMaterials();
@@ -6663,29 +7721,29 @@ function startGame() {
     updateCraftingMenu();
     updateSurvivalHud();
 
-    const spawnX =
+    const x =
         0;
 
-    const spawnZ =
+    const z =
         8;
 
-    const spawnY =
-        getTerrainHeight(
-            spawnX,
-            spawnZ
+    const y =
+        terrainHeight(
+            x,
+            z
         );
 
     camera.position.set(
-        spawnX,
+        x,
 
-        spawnY +
+        y +
         0.5 +
-        eyeHeight,
+        EYE_HEIGHT,
 
-        spawnZ
+        z
     );
 
-    refreshLoadedChunks(
+    refreshChunks(
         true
     );
 
@@ -6706,10 +7764,11 @@ function animate() {
             0.05
         );
 
-    playerAttackCooldown =
+    attackCooldown =
         Math.max(
             0,
-            playerAttackCooldown - delta
+            attackCooldown -
+            delta
         );
 
     updateMovement(
@@ -6728,13 +7787,17 @@ function animate() {
         delta
     );
 
+    updateDayNight(
+        delta
+    );
+
     renderer.render(
         scene,
         camera
     );
 }
 
-window.addEventListener(
+addEventListener(
     "resize",
 
     () => {
@@ -6747,14 +7810,14 @@ window.addEventListener(
         }
 
         camera.aspect =
-            window.innerWidth /
-            window.innerHeight;
+            innerWidth /
+            innerHeight;
 
         camera.updateProjectionMatrix();
 
         renderer.setSize(
-            window.innerWidth,
-            window.innerHeight
+            innerWidth,
+            innerHeight
         );
     }
 );
