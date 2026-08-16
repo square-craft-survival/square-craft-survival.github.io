@@ -288,6 +288,7 @@ const BEDROCK_Y = -12;
 const MAX_BUILD_Y = 64;
 const SEA_LEVEL = 4;
 const BIOME_SIZE = 64;
+const SWAMP_WATER_Y = 6;
 
 const loadedChunks = new Map();
 const chunkEdits = new Map();
@@ -877,25 +878,17 @@ function terrainHeight(
         ) *
         0.75;
 
-    const biome =
-        biomeAt(
-            x,
-            z
-        );
-
-    const base =
-        biome ===
-        "swamp"
-            ? 4
-            : biome ===
-            "desert"
-                ? 7
-                : 6;
+    // Keep a shared terrain baseline between every biome. Biomes now change
+    // vegetation and surface blocks, not the height by several instant blocks.
+    const base = 6;
 
     const variation =
-        broad +
-        ridges +
-        bumps;
+        (
+            broad +
+            ridges +
+            bumps
+        ) *
+        0.45;
 
     return clamp(
         Math.floor(
@@ -943,12 +936,48 @@ function surfaceBlockAt(
 }
 
 function waterSurfaceAt(
-    _x,
-    _z
+    x,
+    z
 ) {
-    // Water generation is intentionally disabled for now. Keeping this helper
-    // lets the swim system stay ready for rivers/lakes later.
-    return null;
+    const blockX = Math.round(x);
+    const blockZ = Math.round(z);
+
+    if (
+        !swampPoolAt(
+            blockX,
+            blockZ
+        )
+        ||
+        terrainHeight(
+            blockX,
+            blockZ
+        ) >= SWAMP_WATER_Y
+    ) {
+        return null;
+    }
+
+    // Water uses a flat plane positioned half a block above its stored Y.
+    return SWAMP_WATER_Y + 0.5;
+}
+
+function swampPoolAt(
+    x,
+    z
+) {
+    if (
+        biomeAt(x, z) !== "swamp"
+    ) {
+        return false;
+    }
+
+    // Slow waves make proper connected pools instead of water sprinkled into
+    // every other grass block.
+    const poolShape =
+        Math.sin(x * 0.055 + z * 0.012)
+        + Math.cos(z * 0.065 - x * 0.015)
+        + Math.sin((x - z) * 0.028);
+
+    return poolShape > 1.48;
 }
 
 function caveNoise(
@@ -1234,21 +1263,26 @@ function insideEntrance(
                 continue;
             }
 
-            // A three-block-wide, descending tunnel. The stone floor for each
-            // step is placed separately below, so this only opens the headroom.
+            // A wide, gentle hillside entrance. One level drops every two
+            // blocks, so the player can walk it both ways instead of falling
+            // into a straight shaft.
             const forward = z - e.z;
             const sideways = Math.abs(x - e.x);
-            const stairDepth = 7;
+            const rampStart = -2;
+            const rampEnd = 12;
 
             if (
-                forward >= 0
+                forward >= rampStart
                 &&
-                forward <= stairDepth
+                forward <= rampEnd
                 &&
-                sideways <= 1
+                sideways <= 2
             ) {
                 const stairFloor =
-                    e.ground - Math.floor(forward);
+                    e.ground - Math.min(
+                        5,
+                        Math.floor((forward - rampStart) / 2)
+                    );
 
                 if (
                     y > stairFloor
@@ -1259,18 +1293,17 @@ function insideEntrance(
                 }
             }
 
-            // A small room at the bottom joins the normal underground caves.
+            // A rounded room at the bottom joins the normal underground caves.
             const chamberDistance = Math.hypot(
                 x - e.x,
-                z - (e.z + stairDepth)
+                z - (e.z + rampEnd + 1)
             );
 
             if (
-                chamberDistance < 2.25
+                chamberDistance < 2.8
                 &&
-                y <= e.ground - stairDepth + 1
-                &&
-                y >= e.ground - stairDepth - 4
+                y <= e.ground - 4
+                && y >= e.ground - 10
             ) {
                 return true;
             }
@@ -1292,14 +1325,20 @@ function caveStairBlocks(
     }
 
     const stairs = [];
-    const stairDepth = 7;
+    const rampStart = -2;
+    const rampEnd = 12;
 
-    for (let step = 0; step <= stairDepth; step++) {
-        for (let side = -1; side <= 1; side++) {
+    for (let forward = rampStart; forward <= rampEnd; forward++) {
+        const floorY = entrance.ground - Math.min(
+            5,
+            Math.floor((forward - rampStart) / 2)
+        );
+
+        for (let side = -2; side <= 2; side++) {
             stairs.push({
                 x: entrance.x + side,
-                y: entrance.ground - step,
-                z: entrance.z + step,
+                y: floorY,
+                z: entrance.z + forward,
                 type: "stone"
             });
         }
@@ -1447,8 +1486,10 @@ function treeCanSpawn(
         biome ===
         "desert"
         ||
-        biome ===
-        "swamp"
+        waterSurfaceAt(
+            x,
+            z
+        ) !== null
     ) {
         return false;
     }
@@ -1476,6 +1517,9 @@ function treeCanSpawn(
             : biome ===
             "blackForest"
                 ? 0.052
+                : biome ===
+                "swamp"
+                    ? 0.034
                 : 0.018;
 
     if (
@@ -1600,8 +1644,19 @@ function treeBlocks(
                         z,
                         13
                     ) *
-                    3
-                )
+                        3
+                    )
+                : biome ===
+                "swamp"
+                    ? 5 +
+                    Math.floor(
+                        hash2(
+                            x,
+                            z,
+                            13
+                        ) *
+                        3
+                    )
                 : hash2(
                     x,
                     z,
@@ -1617,6 +1672,9 @@ function treeBlocks(
         ||
         biome ===
         "blackForest"
+        ||
+        biome ===
+        "swamp"
             ? 3
             : 2;
 
@@ -2268,6 +2326,24 @@ function generateChunkBlocks(
                                 )
                     );
                 }
+            }
+        }
+    }
+
+    // Swamp water is generated as broad, shallow pools only in low ground.
+    // It stays out of regular forests and never becomes a checkerboard ocean.
+    for (let x = minX; x <= maxX; x++) {
+        for (let z = minZ; z <= maxZ; z++) {
+            if (
+                waterSurfaceAt(x, z) !== null
+            ) {
+                put(
+                    x,
+                    SWAMP_WATER_Y,
+                    z,
+                    "water",
+                    true
+                );
             }
         }
     }
@@ -6710,33 +6786,28 @@ function buildAnimalModel(
     }
 
     // ========================================================
-    // MIMIC — tall black watcher with white eyes and chest stripes
+    // MIMIC — a simple, tall shadow-man silhouette
     // ========================================================
     else if (type === "mimic") {
-        const mimicBlack = 0x09090b;
-        const mimicCharcoal = 0x1a1a20;
-        const mimicWhite = 0xf1eee0;
-        const mimicRed = 0xbd2429;
+        const shadow = 0x0b0c10;
+        const edge = 0x20232a;
+        const eye = 0xf3f3e8;
 
-        part({ x: 0.42, y: 0.92, z: 0.28 }, mimicBlack, { x: 0, y: 1.38, z: 0 });
-        part({ x: 0.34, y: 0.46, z: 0.32 }, mimicCharcoal, { x: 0, y: 2.08, z: 0.02 });
+        // Bigger head, directly above the shoulders. No chest mouth/teeth.
+        part({ x: 0.45, y: 0.52, z: 0.38 }, edge, { x: 0, y: 2.13, z: 0.01 });
+        part({ x: 0.40, y: 1.08, z: 0.30 }, shadow, { x: 0, y: 1.32, z: 0 });
 
-        for (const eyeX of [-0.09, 0.09]) {
-            part({ x: 0.055, y: 0.075, z: 0.025 }, mimicWhite, { x: eyeX, y: 2.14, z: 0.195 });
+        for (const eyeX of [-0.11, 0.11]) {
+            part({ x: 0.085, y: 0.07, z: 0.025 }, eye, { x: eyeX, y: 2.19, z: 0.215 });
         }
 
-        for (const stripeX of [-0.12, 0, 0.12]) {
-            part({ x: 0.04, y: 0.35, z: 0.025 }, mimicRed, { x: stripeX, y: 1.40, z: 0.16 });
-            part({ x: 0.018, y: 0.15, z: 0.03 }, mimicWhite, { x: stripeX, y: 1.37, z: 0.175 });
+        for (const armX of [-0.31, 0.31]) {
+            part({ x: 0.10, y: 1.38, z: 0.10 }, shadow, { x: armX, y: 1.13, z: 0 });
+            part({ x: 0.15, y: 0.22, z: 0.14 }, edge, { x: armX, y: 0.34, z: 0.01 });
         }
 
-        for (const armX of [-0.34, 0.34]) {
-            part({ x: 0.09, y: 1.50, z: 0.09 }, mimicBlack, { x: armX, y: 1.18, z: 0 });
-            part({ x: 0.14, y: 0.22, z: 0.13 }, mimicCharcoal, { x: armX, y: 0.36, z: 0.02 });
-        }
-
-        for (const legX of [-0.12, 0.12]) {
-            part({ x: 0.11, y: 1.36, z: 0.11 }, mimicBlack, { x: legX, y: 0.52, z: 0 });
+        for (const legX of [-0.13, 0.13]) {
+            part({ x: 0.13, y: 1.28, z: 0.13 }, shadow, { x: legX, y: 0.52, z: 0 });
         }
     }
 
