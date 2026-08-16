@@ -6425,6 +6425,12 @@ function addEntityPart(
     mesh.userData.entityId =
         entityId;
 
+    // Only parts explicitly marked as legs should swing for the small animals.
+    // Position alone is not enough: their body cubes sit low to the ground too.
+    mesh.userData.walkLeg =
+        pos.walkLeg ===
+        true;
+
     group.add(
         mesh
     );
@@ -6937,16 +6943,23 @@ function buildAnimalModel(
     }
 
     else if (type === "boar") {
-        part({ x: 0.84, y: 0.62, z: 1.12 }, 0x3d2b26, { x: 0, y: 0.68, z: 0 });
-        part({ x: 0.56, y: 0.46, z: 0.48 }, 0x51362d, { x: 0, y: 0.72, z: 0.72 });
-        part({ x: 0.36, y: 0.20, z: 0.18 }, 0x6f4d40, { x: 0, y: 0.57, z: 1.02 });
-        for (const x of [-0.19, 0.19]) {
-            part({ x: 0.05, y: 0.05, z: 0.025 }, 0xf2c6a1, { x, y: 0.82, z: 0.96 });
-            part({ x: 0.055, y: 0.18, z: 0.035 }, 0xe9e1c7, { x, y: 0.50, z: 1.03 });
+        // Low, wide boar silhouette: big body, short legs, snout, ears, and tusks.
+        part({ x: 0.92, y: 0.56, z: 1.22 }, 0x3b2925, { x: 0, y: 0.67, z: -0.04 });
+        part({ x: 0.18, y: 0.16, z: 1.02 }, 0x1c1514, { x: 0, y: 1.02, z: -0.05 });
+        part({ x: 0.64, y: 0.42, z: 0.50 }, 0x49312c, { x: 0, y: 0.75, z: 0.73 });
+        part({ x: 0.60, y: 0.22, z: 0.22 }, 0x6b4840, { x: 0, y: 0.62, z: 1.08 });
+
+        for (const x of [-0.23, 0.23]) {
+            part({ x: 0.18, y: 0.16, z: 0.14 }, 0x241817, { x, y: 1.03, z: 0.78 });
+            part({ x: 0.055, y: 0.055, z: 0.025 }, 0x060505, { x, y: 0.87, z: 0.97 });
+            part({ x: 0.055, y: 0.16, z: 0.04 }, 0xe9e1c7, { x: x * 1.18, y: 0.49, z: 1.21 });
         }
-        for (const [x, z] of [[-0.25, -0.32], [0.25, -0.32], [-0.25, 0.32], [0.25, 0.32]]) {
-            part({ x: 0.16, y: 0.50, z: 0.16 }, 0x241a18, { x, y: 0.25, z });
+
+        for (const [x, z] of [[-0.29, -0.38], [0.29, -0.38], [-0.29, 0.35], [0.29, 0.35]]) {
+            part({ x: 0.20, y: 0.46, z: 0.20 }, 0x241a18, { x, y: 0.27, z, walkLeg: true });
         }
+
+        part({ x: 0.08, y: 0.12, z: 0.30 }, 0x241817, { x: 0, y: 0.81, z: -0.72 });
     }
 
     else if (type === "chicken") {
@@ -6955,7 +6968,7 @@ function buildAnimalModel(
         part({ x: 0.14, y: 0.10, z: 0.16 }, 0xe9a72f, { x: 0, y: 1.03, z: 0.54 });
         for (const x of [-0.13, 0.13]) {
             part({ x: 0.18, y: 0.32, z: 0.06 }, 0xd9d4c1, { x, y: 0.70, z: 0 });
-            part({ x: 0.04, y: 0.38, z: 0.04 }, 0xe0a62b, { x, y: 0.20, z: 0 });
+            part({ x: 0.04, y: 0.38, z: 0.04 }, 0xe0a62b, { x, y: 0.20, z: 0, walkLeg: true });
         }
         for (const x of [-0.09, 0.09]) {
             part({ x: 0.045, y: 0.045, z: 0.02 }, 0x17120e, { x, y: 1.15, z: 0.47 });
@@ -7200,31 +7213,37 @@ function buildAnimalModel(
     // MIMIC — Steve-shaped black-shirt nightmare
     // ========================================================
     else if (type === "mimic") {
-        const skin = 0xb97862;
-        const shirt = 0x101218;
-        const pants = 0x202a42;
+        const skin = 0x705a56;
+        const shirt = 0x090a0d;
+        const pants = 0x141826;
 
-        // Blocky human proportions: head, black shirt, arms, and pants.
-        part({ x: 0.56, y: 0.56, z: 0.52 }, skin, { x: 0, y: 2.04, z: 0.02 });
-        part({ x: 0.58, y: 0.12, z: 0.54 }, 0x1b1518, { x: 0, y: 2.30, z: 0.02 });
-        part({ x: 0.52, y: 0.84, z: 0.30 }, shirt, { x: 0, y: 1.38, z: 0 });
+        // Steve-shaped at a distance, but wrong up close: ashen skin,
+        // hollow eyes, a far-too-wide mouth, and long black-shirted arms.
+        part({ x: 0.62, y: 0.64, z: 0.54 }, skin, { x: 0, y: 2.08, z: 0.02 });
+        part({ x: 0.66, y: 0.14, z: 0.56 }, 0x0b090a, { x: 0, y: 2.39, z: 0.02 });
+        part({ x: 0.58, y: 0.88, z: 0.34 }, shirt, { x: 0, y: 1.39, z: 0 });
+        part({ x: 0.07, y: 0.52, z: 0.025 }, 0x5f1519, { x: 0, y: 1.45, z: 0.185 });
 
-        for (const eyeX of [-0.14, 0.14]) {
-            part({ x: 0.11, y: 0.075, z: 0.025 }, 0xff3030, { x: eyeX, y: 2.11, z: 0.29 });
+        for (const eyeX of [-0.16, 0.16]) {
+            part({ x: 0.17, y: 0.16, z: 0.03 }, 0x050405, { x: eyeX, y: 2.17, z: 0.301 });
+            part({ x: 0.055, y: 0.09, z: 0.035 }, 0xf4f1e8, { x: eyeX, y: 2.17, z: 0.322 });
+            part({ x: 0.020, y: 0.060, z: 0.040 }, 0xd11d25, { x: eyeX, y: 2.17, z: 0.343 });
         }
 
-        part({ x: 0.31, y: 0.075, z: 0.025 }, 0x17070a, { x: 0, y: 1.91, z: 0.292 });
-        for (const toothX of [-0.10, 0, 0.10]) {
-            part({ x: 0.035, y: 0.06, z: 0.03 }, 0xe9e3d3, { x: toothX, y: 1.93, z: 0.307 });
+        part({ x: 0.43, y: 0.14, z: 0.032 }, 0x070405, { x: 0, y: 1.95, z: 0.306 });
+        for (const toothX of [-0.15, -0.075, 0, 0.075, 0.15]) {
+            part({ x: 0.038, y: 0.09, z: 0.035 }, 0xe8e2d2, { x: toothX, y: 1.98, z: 0.332 });
         }
+        part({ x: 0.055, y: 0.20, z: 0.03 }, 0x2b1113, { x: -0.26, y: 2.01, z: 0.309, rotation: { z: -0.48 } });
+        part({ x: 0.055, y: 0.17, z: 0.03 }, 0x2b1113, { x: 0.25, y: 2.08, z: 0.309, rotation: { z: 0.52 } });
 
-        for (const armX of [-0.40, 0.40]) {
-            part({ x: 0.18, y: 0.64, z: 0.18 }, shirt, { x: armX, y: 1.45, z: 0 });
-            part({ x: 0.15, y: 0.42, z: 0.15 }, skin, { x: armX, y: 0.94, z: 0 });
+        for (const armX of [-0.42, 0.42]) {
+            part({ x: 0.20, y: 0.76, z: 0.18 }, shirt, { x: armX, y: 1.40, z: 0 });
+            part({ x: 0.15, y: 0.50, z: 0.15 }, skin, { x: armX, y: 0.80, z: 0.02 });
         }
 
         for (const legX of [-0.16, 0.16]) {
-            part({ x: 0.21, y: 1.10, z: 0.21 }, pants, { x: legX, y: 0.55, z: 0 });
+            part({ x: 0.22, y: 1.10, z: 0.22 }, pants, { x: legX, y: 0.55, z: 0 });
         }
     }
 
@@ -8553,7 +8572,21 @@ function animateEntityModel(
                 base.y < 0.72
             );
 
-        if (looksLikeLimb) {
+        const needsLegOnlyAnimation =
+            e.type === "boar"
+            ||
+            e.type === "chicken";
+
+        const shouldSwing =
+            part.userData.walkLeg
+            ||
+            (
+                !needsLegOnlyAnimation
+                &&
+                looksLikeLimb
+            );
+
+        if (shouldSwing) {
             const side =
                 base.x < 0
                     ? -1
@@ -8563,8 +8596,13 @@ function animateEntityModel(
                 stride * side;
         }
 
-        // Heads and bodies breathe/bob a little even when standing still.
-        else if (base.y > 0.70) {
+        // Boars and chickens stay solid; only their marked legs animate.
+        // The other creatures keep a tiny idle breath so they do not freeze.
+        else if (
+            !needsLegOnlyAnimation
+            &&
+            base.y > 0.70
+        ) {
             part.position.y +=
                 Math.sin(
                     e.animationTime * 0.5
@@ -8805,9 +8843,15 @@ function updateEntities(
         const bob =
             e.type === "wraith"
                 ? Math.sin(e.animationTime * 1.5) * 0.12
-                : moved
-                    ? Math.abs(Math.sin(e.animationTime)) * 0.035
-                    : Math.sin(e.animationTime * 0.5) * 0.012;
+                : (
+                    e.type === "boar"
+                    ||
+                    e.type === "chicken"
+                )
+                    ? 0
+                    : moved
+                        ? Math.abs(Math.sin(e.animationTime)) * 0.035
+                        : Math.sin(e.animationTime * 0.5) * 0.012;
 
         e.group.position.y =
             terrainHeight(
