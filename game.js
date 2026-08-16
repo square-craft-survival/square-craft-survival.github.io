@@ -12419,8 +12419,10 @@ function updateMining(
 
     miningSwingCooldown -= delta;
     if (miningSwingCooldown <= 0) {
-        swingPlayerHand(0.92);
-        miningSwingCooldown = 0.32;
+        // A light tool tap reads as mining.  The old large repeated swing
+        // made the hand look like it was doing something completely else.
+        swingPlayerHand(0.52);
+        miningSwingCooldown = 0.42;
     }
 
     miningBar.style.display =
@@ -12851,8 +12853,10 @@ function updateFirstPersonRig(delta) {
 
     firstPersonRig.visible = visible;
     handHud.style.display = visible ? "block" : "none";
-    handHud.style.transform = `translateY(${Math.round(bob + swing * 10)}px) rotate(${-3 + swing * 15}deg)`;
-    handHudItem.style.transform = `translateY(${-swing * 5}px) rotate(${-10 - swing * 18}deg)`;
+    // Keep actions as a short, readable wrist tap — no giant looping arm
+    // rotation while a block is held down.
+    handHud.style.transform = `translateY(${Math.round(bob + swing * 3)}px) rotate(${-3 + swing * 3}deg)`;
+    handHudItem.style.transform = `translateY(${-swing * 2}px) rotate(${-10 - swing * 4}deg)`;
 }
 
 // ============================================================
