@@ -315,6 +315,10 @@ let renderer;
 let clock;
 let blockGeometry;
 let waterGeometry;
+let doorGeometry;
+let openDoorGeometry;
+let torchGeometry;
+let chestGeometry;
 
 let sunLight;
 let ambientLight;
@@ -406,6 +410,10 @@ const BLOCKS = [
     "blackwoodLeaves",
     "stone",
     "craftingWood",
+    "door",
+    "doorOpen",
+    "doorTop",
+    "torch",
     "lootChest",
     "coalOre",
     "ironOre",
@@ -430,6 +438,8 @@ const PLACEABLE = new Set([
     "blackwoodLeaves",
     "stone",
     "craftingWood",
+    "door",
+    "torch",
     "coalOre",
     "ironOre",
     "goldOre",
@@ -452,6 +462,8 @@ const INVENTORY = {
     blackwoodLeaves: 0,
     stone: 0,
     craftingWood: 0,
+    door: 0,
+    torch: 0,
 
     coal: 0,
     iron: 0,
@@ -668,6 +680,31 @@ const RECIPES = [
             ironArmor: 1
         },
         text: "12 Iron"
+    },
+
+    {
+        name: "Door",
+        input: {
+            craftingWood: 6,
+            sticks: 2
+        },
+        output: {
+            door: 1
+        },
+        text: "6 Crafting Wood + 2 Sticks"
+    },
+
+    {
+        name: "Torches",
+        input: {
+            craftingWood: 1,
+            sticks: 1,
+            coal: 1
+        },
+        output: {
+            torch: 4
+        },
+        text: "1 Crafting Wood + 1 Stick + 1 Coal → 4 Torches"
     }
 ];
 
@@ -695,6 +732,8 @@ const NAMES = {
     stone: "Stone",
 
     craftingWood: "Crafting Wood",
+    door: "Door",
+    torch: "Torch",
 
     coal: "Coal",
     iron: "Iron",
@@ -1437,10 +1476,45 @@ function nearStructure(
     return false;
 }
 
+function isRakeLairChunk(
+    cx,
+    cz
+) {
+    const x =
+        cx *
+        CHUNK_SIZE +
+        8;
+
+    const z =
+        cz *
+        CHUNK_SIZE +
+        8;
+
+    // Boss lairs are uncommon Black Forest cave entrances, and never spawn
+    // around the protected starting area or on top of a normal structure.
+    return (
+        Math.abs(cx) > 1
+        ||
+        Math.abs(cz) > 1
+    )
+        &&
+        biomeAt(x, z) === "blackForest"
+        &&
+        !structureForChunk(cx, cz)
+        &&
+        hash2(cx, cz, 2866) < 0.055;
+}
+
 function caveEntranceForChunk(
     cx,
     cz
 ) {
+    const rakeLair =
+        isRakeLairChunk(
+            cx,
+            cz
+        );
+
     const r =
         hash2(
             cx,
@@ -1449,8 +1523,11 @@ function caveEntranceForChunk(
         );
 
     if (
-        r >
-        0.075
+        (
+            !rakeLair
+            &&
+            r > 0.075
+        )
         ||
         structureForChunk(
             cx,
@@ -1494,7 +1571,9 @@ function caveEntranceForChunk(
             terrainHeight(
                 x,
                 z
-            )
+            ),
+
+        rakeLair
     };
 }
 
@@ -1605,7 +1684,8 @@ function insideEntrance(
                 if (
                     y > stairFloor
                     &&
-                    y <= stairFloor + 3
+                    y <= stairFloor +
+                    (e.rakeLair ? 5 : 3)
                 ) {
                     return true;
                 }
@@ -1624,7 +1704,8 @@ function insideEntrance(
                 chamberDistance < 2.45
                 &&
                 y > chamberFloor
-                && y <= chamberFloor + 4
+                && y <= chamberFloor +
+                (e.rakeLair ? 5 : 4)
             ) {
                 return true;
             }
@@ -1650,7 +1731,8 @@ function insideEntrance(
                 if (
                     Math.abs(x - tunnelCenterX) <= 1
                     && y > tunnelFloor
-                    && y <= tunnelFloor + 3
+                    && y <= tunnelFloor +
+                    (e.rakeLair ? 5 : 3)
                 ) {
                     return true;
                 }
@@ -1749,6 +1831,59 @@ function shouldCarveCave(
         y,
         z
     );
+}
+
+function caveFloorAt(
+    entrance,
+    x,
+    z
+) {
+    const forward = z - entrance.z;
+    const sideways = Math.abs(x - entrance.x);
+    const rampStart = -2;
+    const rampEnd = 12;
+
+    if (
+        forward >= rampStart
+        &&
+        forward <= rampEnd
+        &&
+        sideways <= 2
+    ) {
+        return entrance.ground - Math.min(
+            5,
+            Math.floor((forward - rampStart) / 2)
+        );
+    }
+
+    if (
+        Math.hypot(
+            x - entrance.x,
+            z - (entrance.z + rampEnd + 1)
+        ) < 2.45
+    ) {
+        return entrance.ground - 5;
+    }
+
+    const tunnelForward = forward - rampEnd;
+    const tunnelCenterX =
+        entrance.x + Math.round(
+            Math.sin(
+                tunnelForward * 0.65 + entrance.x * 0.11
+            )
+        );
+
+    if (
+        tunnelForward >= 1
+        &&
+        tunnelForward <= 8
+        &&
+        Math.abs(x - tunnelCenterX) <= 1
+    ) {
+        return entrance.ground - 5 - Math.floor(tunnelForward / 5);
+    }
+
+    return null;
 }
 
 function oreAt(
@@ -3203,6 +3338,33 @@ function woodTopTexture() {
     );
 }
 
+function logEndTexture(
+    base,
+    outerRing,
+    innerRing,
+    core
+) {
+    const c = makeCanvas();
+    const x = c.getContext("2d");
+
+    x.fillStyle = base;
+    x.fillRect(0, 0, 16, 16);
+
+    // Square-ish low-res rings fit the voxel art better than a smooth photo ring.
+    for (const [inset, color] of [[1, outerRing], [3, innerRing], [5, outerRing]]) {
+        x.strokeStyle = color;
+        x.strokeRect(inset, inset, 16 - inset * 2, 16 - inset * 2);
+    }
+
+    x.fillStyle = core;
+    x.fillRect(7, 7, 2, 2);
+    x.fillStyle = innerRing;
+    x.fillRect(4, 8, 1, 1);
+    x.fillRect(11, 6, 1, 1);
+
+    return finishTexture(c);
+}
+
 function craftingWoodTexture() {
     const c =
         makeCanvas();
@@ -3267,6 +3429,40 @@ function craftingWoodTexture() {
     );
 }
 
+function doorTexture() {
+    const c = makeCanvas();
+    const x = c.getContext("2d");
+
+    x.fillStyle = "#6d4021";
+    x.fillRect(0, 0, 16, 16);
+    x.fillStyle = "#a66b36";
+    x.fillRect(2, 1, 12, 14);
+    x.fillStyle = "#4a2917";
+    x.fillRect(4, 1, 1, 14);
+    x.fillRect(10, 1, 1, 14);
+    x.fillRect(2, 7, 12, 1);
+    x.fillStyle = "#e1c15b";
+    x.fillRect(11, 10, 2, 2);
+
+    return finishTexture(c);
+}
+
+function torchTexture() {
+    const c = makeCanvas();
+    const x = c.getContext("2d");
+
+    x.fillStyle = "#4b2c16";
+    x.fillRect(0, 0, 16, 16);
+    x.fillStyle = "#87502a";
+    x.fillRect(6, 5, 4, 11);
+    x.fillStyle = "#ff8f24";
+    x.fillRect(4, 1, 8, 6);
+    x.fillStyle = "#ffe88a";
+    x.fillRect(6, 0, 4, 5);
+
+    return finishTexture(c);
+}
+
 function lootChestTexture() {
     const c =
         makeCanvas();
@@ -3297,6 +3493,24 @@ function lootChestTexture() {
     return finishTexture(
         c
     );
+}
+
+function lootChestTopTexture() {
+    const c = makeCanvas();
+    const x = c.getContext("2d");
+
+    x.fillStyle = "#6a3518";
+    x.fillRect(0, 0, 16, 16);
+    x.fillStyle = "#b77735";
+    x.fillRect(1, 1, 14, 14);
+    x.fillStyle = "#4a2411";
+    x.fillRect(1, 3, 14, 1);
+    x.fillRect(1, 8, 14, 1);
+    x.fillRect(1, 13, 14, 1);
+    x.fillRect(4, 1, 1, 14);
+    x.fillRect(11, 1, 1, 14);
+
+    return finishTexture(c);
 }
 
 function oreTexture(
@@ -3583,7 +3797,7 @@ function createMaterials() {
                 )
         });
 
-    materials.redwoodWood =
+    const redwoodSide =
         new THREE.MeshLambertMaterial({
             map:
                 speckled(
@@ -3598,6 +3812,26 @@ function createMaterials() {
                     34
                 )
         });
+
+    const redwoodEnd =
+        new THREE.MeshLambertMaterial({
+            map:
+                logEndTexture(
+                    "#bd7046",
+                    "#6b2e22",
+                    "#e19a63",
+                    "#55221b"
+                )
+        });
+
+    materials.redwoodWood = [
+        redwoodSide,
+        redwoodSide,
+        redwoodEnd,
+        redwoodEnd,
+        redwoodSide,
+        redwoodSide
+    ];
 
     materials.redwoodLeaves =
         new THREE.MeshLambertMaterial({
@@ -3615,7 +3849,7 @@ function createMaterials() {
                 )
         });
 
-    materials.blackwoodWood =
+    const blackwoodSide =
         new THREE.MeshLambertMaterial({
             map:
                 speckled(
@@ -3630,6 +3864,26 @@ function createMaterials() {
                     38
                 )
         });
+
+    const blackwoodEnd =
+        new THREE.MeshLambertMaterial({
+            map:
+                logEndTexture(
+                    "#51405d",
+                    "#20172b",
+                    "#765b82",
+                    "#140f1c"
+                )
+        });
+
+    materials.blackwoodWood = [
+        blackwoodSide,
+        blackwoodSide,
+        blackwoodEnd,
+        blackwoodEnd,
+        blackwoodSide,
+        blackwoodSide
+    ];
 
     materials.blackwoodLeaves =
         new THREE.MeshLambertMaterial({
@@ -3670,11 +3924,51 @@ function createMaterials() {
                 craftingWoodTexture()
         });
 
-    materials.lootChest =
+    materials.door =
+        new THREE.MeshLambertMaterial({
+            map:
+                doorTexture()
+        });
+
+    materials.doorOpen =
+        new THREE.MeshLambertMaterial({
+            map:
+                doorTexture()
+        });
+
+    materials.doorTop =
+        new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: 0,
+            depthWrite: false
+        });
+
+    materials.torch =
+        new THREE.MeshBasicMaterial({
+            map:
+                torchTexture()
+        });
+
+    const chestSide =
         new THREE.MeshLambertMaterial({
             map:
                 lootChestTexture()
         });
+
+    const chestTop =
+        new THREE.MeshLambertMaterial({
+            map:
+                lootChestTopTexture()
+        });
+
+    materials.lootChest = [
+        chestSide,
+        chestSide,
+        chestTop,
+        chestSide,
+        chestSide,
+        chestSide
+    ];
 
     materials.coalOre =
         new THREE.MeshLambertMaterial({
@@ -3772,6 +4066,12 @@ function rebuildChunk(
     chunk.meshes =
         [];
 
+    for (const light of chunk.lights || []) {
+        scene.remove(light);
+    }
+
+    chunk.lights = [];
+
     const groups =
         Object.fromEntries(
             BLOCKS.map(
@@ -3851,12 +4151,22 @@ function rebuildChunk(
             continue;
         }
 
+        const geometry =
+            type === "water"
+                ? waterGeometry
+                : type === "door"
+                    ? doorGeometry
+                    : type === "doorOpen"
+                        ? openDoorGeometry
+                        : type === "torch"
+                            ? torchGeometry
+                            : type === "lootChest"
+                                ? chestGeometry
+                            : blockGeometry;
+
         const mesh =
             new THREE.InstancedMesh(
-                type ===
-                "water"
-                    ? waterGeometry
-                    : blockGeometry,
+                geometry,
                 materials[type],
                 blocks.length
             );
@@ -3871,11 +4181,15 @@ function rebuildChunk(
 
             dummy.position.set(
                 b.x,
-                type ===
-                "water"
-                    ? b.y +
-                    0.5
-                    : b.y,
+                type === "water"
+                    ? b.y + 0.5
+                    : type === "door" || type === "doorOpen"
+                        ? b.y + 0.4
+                        : type === "torch"
+                            ? b.y + 0.1
+                            : type === "lootChest"
+                                ? b.y - 0.12
+                            : b.y,
                 b.z
             );
 
@@ -3917,8 +4231,9 @@ function rebuildChunk(
         );
 
         if (
-            type !==
-            "water"
+            type !== "water"
+            &&
+            type !== "doorTop"
         ) {
             interactiveMeshes.add(
                 mesh
@@ -3928,6 +4243,26 @@ function rebuildChunk(
         chunk.meshes.push(
             mesh
         );
+    }
+
+    // Torches really light nearby cave walls instead of only looking orange.
+    for (const b of groups.torch) {
+        const light =
+            new THREE.PointLight(
+                0xff9d32,
+                1.35,
+                8,
+                1.8
+            );
+
+        light.position.set(
+            b.x,
+            b.y + 0.45,
+            b.z
+        );
+
+        scene.add(light);
+        chunk.lights.push(light);
     }
 }
 
@@ -3965,6 +4300,9 @@ function loadChunk(
             ),
 
         meshes:
+            [],
+
+        lights:
             [],
 
         entityIds:
@@ -4012,6 +4350,10 @@ function unloadChunk(
         scene.remove(
             mesh
         );
+    }
+
+    for (const light of chunk.lights || []) {
+        scene.remove(light);
     }
 
     for (
@@ -4282,7 +4624,13 @@ const solidBlockExists =
         return !!block
             &&
             block.type !==
-            "water";
+            "water"
+            &&
+            block.type !==
+            "doorOpen"
+            &&
+            block.type !==
+            "torch";
     };
 
 function removeBlock(
@@ -4686,6 +5034,31 @@ function itemIcon(
             12,
             1
         );
+    }
+
+    else if (
+        type ===
+        "door"
+    ) {
+        x.fillStyle = "#9a6132";
+        x.fillRect(4, 1, 8, 14);
+        x.fillStyle = "#4a2917";
+        x.fillRect(6, 1, 1, 14);
+        x.fillRect(4, 8, 8, 1);
+        x.fillStyle = "#e1c15b";
+        x.fillRect(10, 11, 2, 2);
+    }
+
+    else if (
+        type ===
+        "torch"
+    ) {
+        x.fillStyle = "#70411f";
+        x.fillRect(7, 7, 2, 8);
+        x.fillStyle = "#ff9d2f";
+        x.fillRect(5, 2, 6, 6);
+        x.fillStyle = "#fff2a4";
+        x.fillRect(7, 1, 2, 5);
     }
 
     else if (
@@ -6830,6 +7203,39 @@ function equipSelectedArmor() {
     return true;
 }
 
+function toggleDoor(block) {
+    const { x, y, z } = block;
+
+    if (block.type === "door") {
+        removeBlock(x, y, z);
+
+        if (getBlock(x, y + 1, z)?.type === "doorTop") {
+            removeBlock(x, y + 1, z);
+        }
+
+        addBlock(x, y, z, "doorOpen");
+        return true;
+    }
+
+    if (block.type === "doorOpen") {
+        if (blockExists(x, y + 1, z) || blockHitsPlayer(x, y, z)) {
+            showLootToast("DOORWAY IS BLOCKED");
+            return false;
+        }
+
+        removeBlock(x, y, z);
+
+        if (!addBlock(x, y, z, "door")) {
+            return false;
+        }
+
+        addBlock(x, y + 1, z, "doorTop");
+        return true;
+    }
+
+    return false;
+}
+
 // ============================================================
 // ENTITIES
 // ============================================================
@@ -6846,6 +7252,7 @@ const MONSTER_TYPES =
     new Set([
         "mimic",
         "rake",
+        "rakeBoss",
         "shade",
         "crawler",
         "brute",
@@ -7782,6 +8189,9 @@ function buildAnimalModel(
     else if (
         type ===
         "rake"
+        ||
+        type ===
+        "rakeBoss"
     ) {
         part(
             {
@@ -8034,6 +8444,11 @@ function buildAnimalModel(
                 z: 0
             }
         );
+
+        if (type === "rakeBoss") {
+            // A bigger silhouette makes the lair encounter instantly readable.
+            g.scale.setScalar(1.48);
+        }
     }
 
     return g;
@@ -8122,6 +8537,17 @@ function entityStats(
 
             attack:
                 3
+        };
+    }
+
+    if (
+        type ===
+        "rakeBoss"
+    ) {
+        return {
+            health: 60,
+            speed: 1.15,
+            attack: 3.8
         };
     }
 
@@ -8217,7 +8643,9 @@ function spawnEntityForChunk(
     idPrefix =
         "entity",
     spawnSeed =
-        0
+        0,
+    spawnOptions =
+        null
 ) {
     const chunkBiome =
         biomeAt(
@@ -8309,21 +8737,28 @@ function spawnEntityForChunk(
         return;
     }
 
+    const fixedPosition =
+        spawnOptions?.position ||
+        null;
+
     let x =
+        fixedPosition?.x ??
         chunk.cx *
         CHUNK_SIZE +
         8;
 
     let z =
+        fixedPosition?.z ??
         chunk.cz *
         CHUNK_SIZE +
         8;
 
-    for (
-        let a = 0;
-        a < 8;
-        a++
-    ) {
+    if (!fixedPosition) {
+        for (
+            let a = 0;
+            a < 8;
+            a++
+        ) {
         x =
             chunk.cx *
             CHUNK_SIZE +
@@ -8360,33 +8795,36 @@ function spawnEntityForChunk(
                 12
             );
 
-        if (
-            Math.hypot(
-                x,
-                z - 8
-            ) >
-            10
+            if (
+                Math.hypot(
+                    x,
+                    z - 8
+                ) >
+                10
 
-            &&
+                &&
 
-            canEntityStand(
-                x,
-                z
-            )
+                canEntityStand(
+                    x,
+                    z
+                )
 
-            &&
+                &&
 
-            !nearStructure(
-                x,
-                z,
-                5
-            )
-        ) {
-            break;
+                !nearStructure(
+                    x,
+                    z,
+                    5
+                )
+            ) {
+                break;
+            }
         }
     }
 
     if (
+        !fixedPosition
+        &&
         !canEntityStand(
             x,
             z
@@ -8407,7 +8845,10 @@ function spawnEntityForChunk(
             z -
             camera.position.z
         ) <
-        6
+        (
+            spawnOptions?.minimumPlayerDistance ??
+            6
+        )
     ) {
         // Never materialize a new hostile inside the player/camera.
         return;
@@ -8437,6 +8878,7 @@ function spawnEntityForChunk(
     group.position.set(
         x,
 
+        fixedPosition?.y ??
         terrainHeight(
             Math.round(
                 x
@@ -8541,6 +8983,16 @@ function spawnEntityForChunk(
             ) *
             Math.PI *
             2,
+
+        boss:
+            !!spawnOptions?.boss,
+
+        underground:
+            !!spawnOptions?.underground,
+
+        lair:
+            spawnOptions?.lair ||
+            null,
 
         chunkKey:
             chunk.key
@@ -8655,6 +9107,85 @@ function spawnMonsterForChunk(
     );
 }
 
+function spawnRakeBossForChunk(chunk) {
+    const entrance =
+        caveEntranceForChunk(
+            chunk.cx,
+            chunk.cz
+        );
+
+    if (
+        !entrance?.rakeLair
+        ||
+        !camera
+    ) {
+        return;
+    }
+
+    const chamberX =
+        entrance.x;
+
+    const chamberZ =
+        entrance.z +
+        13;
+
+    // The player has to walk down the staircase into the chamber. Just
+    // standing over the hole on the surface does not summon the boss.
+    if (
+        Math.hypot(
+            camera.position.x - chamberX,
+            camera.position.z - chamberZ
+        ) > 3.4
+        ||
+        camera.position.y >
+        entrance.ground - 1.4
+    ) {
+        return;
+    }
+
+    const bossForward = 18;
+    const bossZ =
+        entrance.z +
+        bossForward;
+
+    const bossX =
+        entrance.x + Math.round(
+            Math.sin(
+                (bossForward - 12) * 0.65 +
+                entrance.x * 0.11
+            )
+        );
+
+    const bossFloor =
+        caveFloorAt(
+            entrance,
+            bossX,
+            bossZ
+        );
+
+    if (bossFloor === null) {
+        return;
+    }
+
+    spawnEntityForChunk(
+        chunk,
+        "rakeBoss",
+        "rake-boss",
+        2866,
+        {
+            boss: true,
+            underground: true,
+            lair: entrance,
+            minimumPlayerDistance: 2.25,
+            position: {
+                x: bossX,
+                y: bossFloor + 0.5,
+                z: bossZ
+            }
+        }
+    );
+}
+
 function updateMonsterSpawning(
     delta
 ) {
@@ -8662,6 +9193,11 @@ function updateMonsterSpawning(
         gameOver
     ) {
         return;
+    }
+
+    // Boss lairs can be entered during the day too; the Rake waits below.
+    for (const chunk of loadedChunks.values()) {
+        spawnRakeBossForChunk(chunk);
     }
 
     if (
@@ -8679,6 +9215,8 @@ function updateMonsterSpawning(
         ) {
             if (
                 entity.hostile
+                &&
+                !entity.boss
             ) {
                 removeEntity(
                     entity.id,
@@ -8946,6 +9484,15 @@ function killEntity(
         );
     }
 
+    else if (
+        e.boss
+    ) {
+        addItem("diamond", 2);
+        addItem("gold", 5);
+        addItem("iron", 8);
+        showLootToast("THE SKINWALKER FALLS — BOSS LOOT CLAIMED");
+    }
+
     else {
         addItem(
             "coal",
@@ -9053,6 +9600,37 @@ function entityCanMove(
     nx,
     nz
 ) {
+    if (
+        e.underground
+        &&
+        e.lair
+    ) {
+        const floor =
+            caveFloorAt(
+                e.lair,
+                nx,
+                nz
+            );
+
+        if (floor === null) {
+            return false;
+        }
+
+        return (
+            !solidBlockExists(
+                Math.round(nx),
+                floor + 1,
+                Math.round(nz)
+            )
+            &&
+            !solidBlockExists(
+                Math.round(nx),
+                floor + 2,
+                Math.round(nz)
+            )
+        );
+    }
+
     const a =
         terrainHeight(
             Math.round(
@@ -9310,7 +9888,11 @@ function updateEntities(
         const hostileAggro =
             e.hostile
             &&
-            isNight
+            (
+                isNight
+                ||
+                e.boss
+            )
             &&
             dist <
             (
@@ -9499,18 +10081,29 @@ function updateEntities(
                         ? Math.abs(Math.sin(e.animationTime)) * 0.035
                         : Math.sin(e.animationTime * 0.5) * 0.012;
 
-        e.group.position.y =
-            terrainHeight(
-                Math.round(
-                    e.group.position.x
-                ),
-
-                Math.round(
+        const floorY =
+            e.underground
+                ? caveFloorAt(
+                    e.lair,
+                    e.group.position.x,
                     e.group.position.z
                 )
-            ) +
-            0.5 +
-            bob;
+                : terrainHeight(
+                    Math.round(
+                        e.group.position.x
+                    ),
+
+                    Math.round(
+                        e.group.position.z
+                    )
+                );
+
+        if (floorY !== null) {
+            e.group.position.y =
+                floorY +
+                0.5 +
+                bob;
+        }
 
         animateEntityModel(
             e,
@@ -10269,6 +10862,13 @@ function blockDrop(
 ) {
     if (
         type ===
+        "doorOpen"
+    ) {
+        return "door";
+    }
+
+    if (
+        type ===
         "coalOre"
     ) {
         return "coal";
@@ -10437,6 +11037,18 @@ function updateMining(
             );
 
         if (
+            removed?.type ===
+            "door"
+        ) {
+            removeBlock(
+                bt.block.x,
+                bt.block.y +
+                1,
+                bt.block.z
+            );
+        }
+
+        if (
             removed
             &&
             canHarvest(
@@ -10518,6 +11130,36 @@ function placeBlock() {
             z
         )
     ) {
+        return;
+    }
+
+    if (
+        t === "door"
+    ) {
+        if (
+            y + 1 > MAX_BUILD_Y
+            ||
+            blockExists(x, y + 1, z)
+            ||
+            blockHitsPlayer(x, y + 1, z)
+        ) {
+            return;
+        }
+
+        if (
+            addBlock(x, y, z, "door")
+        ) {
+            if (
+                addBlock(x, y + 1, z, "doorTop")
+            ) {
+                removeItem(t, 1);
+            }
+
+            else {
+                removeBlock(x, y, z);
+            }
+        }
+
         return;
     }
 
@@ -10834,6 +11476,18 @@ function setupControls() {
                 }
 
                 if (
+                    blockTarget?.block.type === "door"
+                    ||
+                    blockTarget?.block.type === "doorOpen"
+                ) {
+                    toggleDoor(
+                        blockTarget.block
+                    );
+
+                    return;
+                }
+
+                if (
                     !equipSelectedArmor()
                     &&
                     !eatSelectedFood()
@@ -11035,6 +11689,37 @@ function startGame() {
         -Math.PI /
         2
     );
+
+    // Doors are tall/slim; torches are little glowing sticks instead of cubes.
+    doorGeometry =
+        new THREE.BoxGeometry(
+            0.16,
+            1.8,
+            0.92
+        );
+
+    openDoorGeometry =
+        new THREE.BoxGeometry(
+            0.92,
+            1.8,
+            0.16
+        );
+
+    torchGeometry =
+        new THREE.BoxGeometry(
+            0.22,
+            0.72,
+            0.22
+        );
+
+    // Chest blocks keep their collision space, but render as a short chest
+    // sitting on the floor instead of a giant full-size wooden cube.
+    chestGeometry =
+        new THREE.BoxGeometry(
+            0.92,
+            0.76,
+            0.80
+        );
 
     setupControls();
 
