@@ -1,19 +1,16 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js";
 
-console.log("SQUARE CRAFT SURVIVAL - ENTITIES + HEALTH + HUNGER");
+console.log("SQUARE CRAFT SURVIVAL - ENTITIES + TOOLS + SURVIVAL");
 
 // =====================================================
-// SMALL HELPERS
+// HELPERS
 // =====================================================
 
-function css(el, styles) {
-    Object.assign(el.style, styles);
-    return el;
-}
-
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-}
+const css = (el, styles) => (Object.assign(el.style, styles), el);
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const blockKey = (x, y, z) => `${x},${y},${z}`;
+const chunkKey = (cx, cz) => `${cx},${cz}`;
+const worldToChunk = value => Math.floor(value / CHUNK_SIZE);
 
 // =====================================================
 // HTML / HUD
@@ -47,7 +44,6 @@ const blockNameLabel = css(document.createElement("div"), {
     pointerEvents: "none",
     zIndex: "20"
 });
-
 gameContainer.appendChild(blockNameLabel);
 
 const miningHud = css(document.createElement("div"), {
@@ -69,7 +65,6 @@ const miningFill = css(document.createElement("div"), {
     height: "100%",
     background: "white"
 });
-
 miningHud.appendChild(miningFill);
 gameContainer.appendChild(miningHud);
 
@@ -83,7 +78,6 @@ const survivalHud = css(document.createElement("div"), {
     textShadow: "2px 2px 0 #000",
     fontWeight: "bold"
 });
-
 gameContainer.appendChild(survivalHud);
 
 function createMeter(labelText) {
@@ -95,7 +89,7 @@ function createMeter(labelText) {
     });
 
     const label = css(document.createElement("div"), {
-        width: "76px",
+        width: "82px",
         fontSize: "15px"
     });
 
@@ -146,7 +140,7 @@ const damageFlash = css(document.createElement("div"), {
 document.body.appendChild(damageFlash);
 
 // =====================================================
-// THREE / PLAYER STATE
+// GAME STATE
 // =====================================================
 
 let scene;
@@ -183,7 +177,7 @@ let starvationTimer = 0;
 let regenTimer = 0;
 
 // =====================================================
-// INFINITE WORLD
+// WORLD SETTINGS
 // =====================================================
 
 const CHUNK_SIZE = 16;
@@ -201,10 +195,6 @@ const interactiveMeshes = new Set();
 
 let lastPlayerChunkX = null;
 let lastPlayerChunkZ = null;
-
-// =====================================================
-// ITEMS / BLOCKS / RECIPES
-// =====================================================
 
 const allBlockTypes = [
     "grass",
@@ -224,6 +214,10 @@ const placeableTypes = new Set([
     "stone",
     "craftingWood"
 ]);
+
+// =====================================================
+// INVENTORY / RECIPES
+// =====================================================
 
 const inventory = {
     grass: 0,
@@ -255,50 +249,62 @@ let selectedHotbarIndex = 0;
 const recipes = [
     {
         name: "Crafting Wood",
+
         input: {
             wood: 1
         },
+
         output: {
             craftingWood: 5
         },
+
         description:
             "1 Wood → 5 Crafting Wood"
     },
 
     {
         name: "Sticks",
+
         input: {
             craftingWood: 2
         },
+
         output: {
             sticks: 4
         },
+
         description:
             "2 Crafting Wood → 4 Sticks"
     },
 
     {
         name: "Axe",
+
         input: {
             craftingWood: 3,
             sticks: 2
         },
+
         output: {
             axe: 1
         },
+
         description:
             "3 Crafting Wood + 2 Sticks → Axe"
     },
 
     {
         name: "Pickaxe",
+
         input: {
             craftingWood: 3,
             sticks: 2
         },
+
         output: {
             pickaxe: 1
         },
+
         description:
             "3 Crafting Wood + 2 Sticks → Pickaxe"
     }
@@ -330,6 +336,10 @@ function itemName(type) {
     return names[type] || type;
 }
 
+function selectedItem() {
+    return hotbarItems[selectedHotbarIndex];
+}
+
 // =====================================================
 // RAYCASTING / MINING
 // =====================================================
@@ -350,12 +360,6 @@ let miningTargetKey = null;
 let miningProgress = 0;
 
 let playerAttackCooldown = 0;
-
-function selectedItem() {
-    return hotbarItems[
-        selectedHotbarIndex
-    ];
-}
 
 function getMiningTime(
     blockType
@@ -425,44 +429,8 @@ function resetMining() {
 }
 
 // =====================================================
-// COORDINATE HELPERS
+// TERRAIN
 // =====================================================
-
-function blockKey(
-    x,
-    y,
-    z
-) {
-    return `${x},${y},${z}`;
-}
-
-function chunkKey(
-    cx,
-    cz
-) {
-    return `${cx},${cz}`;
-}
-
-function worldToChunk(
-    value
-) {
-    return Math.floor(
-        value /
-        CHUNK_SIZE
-    );
-}
-
-function getChunkForWorld(
-    x,
-    z
-) {
-    return loadedChunks.get(
-        chunkKey(
-            worldToChunk(x),
-            worldToChunk(z)
-        )
-    ) || null;
-}
 
 function coordinateRandom(
     x,
@@ -472,16 +440,13 @@ function coordinateRandom(
         Math.sin(
             x * 12.9898 +
             z * 78.233
-        ) *
+        )
+        *
         43758.5453;
 
     return value -
         Math.floor(value);
 }
-
-// =====================================================
-// TERRAIN / TREES
-// =====================================================
 
 function getTerrainHeight(
     x,
@@ -491,7 +456,9 @@ function getTerrainHeight(
         Math.sin(
             x * 0.026
         ) * 2.6
+
         +
+
         Math.cos(
             z * 0.024
         ) * 2.3;
@@ -501,7 +468,9 @@ function getTerrainHeight(
             (x + z) *
             0.052
         ) * 1.7
+
         +
+
         Math.cos(
             (x - z) *
             0.041
@@ -511,15 +480,19 @@ function getTerrainHeight(
         Math.sin(
             x * 0.11
         ) * 0.7
+
         +
+
         Math.cos(
             z * 0.10
         ) * 0.7;
 
     return Math.max(
         0,
+
         Math.min(
             11,
+
             Math.floor(
                 4 +
                 huge +
@@ -529,6 +502,10 @@ function getTerrainHeight(
         )
     );
 }
+
+// =====================================================
+// TREES
+// =====================================================
 
 function canTreeSpawn(
     x,
@@ -587,17 +564,23 @@ function canTreeSpawn(
             center -
             north
         ) <= 1
+
         &&
+
         Math.abs(
             center -
             south
         ) <= 1
+
         &&
+
         Math.abs(
             center -
             east
         ) <= 1
+
         &&
+
         Math.abs(
             center -
             west
@@ -641,11 +624,15 @@ function getTreeBlocks(
     ) {
         blocks.push({
             x: treeX,
+
             y:
                 groundY +
                 y,
+
             z: treeZ,
-            type: "wood"
+
+            type:
+                "wood"
         });
     }
 
@@ -765,19 +752,37 @@ function getTreeBlocks(
 
     blocks.push({
         x: treeX,
+
         y:
             leafBase +
             3,
+
         z: treeZ,
-        type: "leaves"
+
+        type:
+            "leaves"
     });
 
     return blocks;
 }
 
 // =====================================================
-// WORLD EDITS / CHUNK GENERATION
+// CHUNKS / WORLD EDITS
 // =====================================================
+
+function getChunkForWorld(
+    x,
+    z
+) {
+    return loadedChunks.get(
+
+        chunkKey(
+            worldToChunk(x),
+            worldToChunk(z)
+        )
+
+    ) || null;
+}
 
 function setWorldEdit(
     x,
@@ -810,6 +815,7 @@ function setWorldEdit(
                 y,
                 z
             ),
+
             typeOrNull
         );
 }
@@ -871,6 +877,7 @@ function generateChunkBlocks(
         ) {
             blocks.set(
                 key,
+
                 {
                     x,
                     y,
@@ -1024,10 +1031,12 @@ function generateChunkBlocks(
 
             blocks.set(
                 key,
+
                 {
                     x,
                     y,
                     z,
+
                     type:
                         typeOrNull
                 }
@@ -1048,8 +1057,11 @@ function makeCanvas() {
             "canvas"
         );
 
-    canvas.width = 16;
-    canvas.height = 16;
+    canvas.width =
+        16;
+
+    canvas.height =
+        16;
 
     return canvas;
 }
@@ -1074,7 +1086,11 @@ function finishPixelTexture(
     return texture;
 }
 
-function createGrassTopTexture() {
+function speckleTexture(
+    base,
+    colors,
+    amount
+) {
     const c =
         makeCanvas();
 
@@ -1084,7 +1100,7 @@ function createGrassTopTexture() {
         );
 
     x.fillStyle =
-        "#4b9d38";
+        base;
 
     x.fillRect(
         0,
@@ -1093,16 +1109,9 @@ function createGrassTopTexture() {
         16
     );
 
-    const colors = [
-        "#5bb347",
-        "#3f8730",
-        "#67bc4e",
-        "#36792b"
-    ];
-
     for (
         let i = 0;
-        i < 60;
+        i < amount;
         i++
     ) {
         x.fillStyle =
@@ -1122,13 +1131,31 @@ function createGrassTopTexture() {
                 3
             ) % 16,
 
-            1,
+            i % 9 === 0
+                ? 2
+                : 1,
+
             1
         );
     }
 
     return finishPixelTexture(
         c
+    );
+}
+
+function createGrassTopTexture() {
+    return speckleTexture(
+        "#4b9d38",
+
+        [
+            "#5bb347",
+            "#3f8730",
+            "#67bc4e",
+            "#36792b"
+        ],
+
+        60
     );
 }
 
@@ -1227,60 +1254,17 @@ function createGrassSideTexture() {
 }
 
 function createDirtTexture() {
-    const c =
-        makeCanvas();
+    return speckleTexture(
+        "#70492f",
 
-    const x =
-        c.getContext(
-            "2d"
-        );
+        [
+            "#85593a",
+            "#5c3a24",
+            "#986641",
+            "#67412a"
+        ],
 
-    x.fillStyle =
-        "#70492f";
-
-    x.fillRect(
-        0,
-        0,
-        16,
-        16
-    );
-
-    const colors = [
-        "#85593a",
-        "#5c3a24",
-        "#986641",
-        "#67412a"
-    ];
-
-    for (
-        let i = 0;
-        i < 54;
-        i++
-    ) {
-        x.fillStyle =
-            colors[
-                i %
-                colors.length
-            ];
-
-        x.fillRect(
-            (
-                i * 3 +
-                i * i * 2
-            ) % 16,
-
-            (
-                i * 7 +
-                5
-            ) % 16,
-
-            1,
-            1
-        );
-    }
-
-    return finishPixelTexture(
-        c
+        54
     );
 }
 
@@ -1402,121 +1386,32 @@ function createWoodTopTexture() {
 }
 
 function createLeavesTexture() {
-    const c =
-        makeCanvas();
+    return speckleTexture(
+        "#2e6d2c",
 
-    const x =
-        c.getContext(
-            "2d"
-        );
+        [
+            "#3d8538",
+            "#245822",
+            "#4a9141",
+            "#326f2e"
+        ],
 
-    x.fillStyle =
-        "#2e6d2c";
-
-    x.fillRect(
-        0,
-        0,
-        16,
-        16
-    );
-
-    const colors = [
-        "#3d8538",
-        "#245822",
-        "#4a9141",
-        "#326f2e"
-    ];
-
-    for (
-        let i = 0;
-        i < 76;
-        i++
-    ) {
-        x.fillStyle =
-            colors[
-                i %
-                colors.length
-            ];
-
-        x.fillRect(
-            (
-                i * 5 +
-                i * i
-            ) % 16,
-
-            (
-                i * 9 +
-                2
-            ) % 16,
-
-            1,
-            1
-        );
-    }
-
-    return finishPixelTexture(
-        c
+        76
     );
 }
 
 function createStoneTexture() {
-    const c =
-        makeCanvas();
+    return speckleTexture(
+        "#686868",
 
-    const x =
-        c.getContext(
-            "2d"
-        );
+        [
+            "#7d7d7d",
+            "#555555",
+            "#8c8c8c",
+            "#606060"
+        ],
 
-    x.fillStyle =
-        "#686868";
-
-    x.fillRect(
-        0,
-        0,
-        16,
-        16
-    );
-
-    const colors = [
-        "#7d7d7d",
-        "#555555",
-        "#8c8c8c",
-        "#606060"
-    ];
-
-    for (
-        let i = 0;
-        i < 48;
-        i++
-    ) {
-        x.fillStyle =
-            colors[
-                i %
-                colors.length
-            ];
-
-        x.fillRect(
-            (
-                i * 7 +
-                1
-            ) % 16,
-
-            (
-                i * 5 +
-                i * i
-            ) % 16,
-
-            i % 5 === 0
-                ? 2
-                : 1,
-
-            1
-        );
-    }
-
-    return finishPixelTexture(
-        c
+        48
     );
 }
 
@@ -1592,60 +1487,17 @@ function createCraftingWoodTexture() {
 }
 
 function createBedrockTexture() {
-    const c =
-        makeCanvas();
+    return speckleTexture(
+        "#282828",
 
-    const x =
-        c.getContext(
-            "2d"
-        );
+        [
+            "#111111",
+            "#454545",
+            "#333333",
+            "#5a5a5a"
+        ],
 
-    x.fillStyle =
-        "#282828";
-
-    x.fillRect(
-        0,
-        0,
-        16,
-        16
-    );
-
-    const colors = [
-        "#111111",
-        "#454545",
-        "#333333",
-        "#5a5a5a"
-    ];
-
-    for (
-        let i = 0;
-        i < 82;
-        i++
-    ) {
-        x.fillStyle =
-            colors[
-                i %
-                colors.length
-            ];
-
-        x.fillRect(
-            (
-                i * 11 +
-                i * i * 3
-            ) % 16,
-
-            (
-                i * 7 +
-                4
-            ) % 16,
-
-            1,
-            1
-        );
-    }
-
-    return finishPixelTexture(
-        c
+        82
     );
 }
 
@@ -1748,9 +1600,9 @@ function getBlockTint(
         );
 
     const shade =
-        0.90 +
+        0.9 +
         random *
-        0.10;
+        0.1;
 
     return new THREE.Color(
         shade,
@@ -1775,7 +1627,8 @@ function rebuildChunk(
         );
     }
 
-    chunk.meshes = [];
+    chunk.meshes =
+        [];
 
     const grouped = {};
 
@@ -1783,7 +1636,8 @@ function rebuildChunk(
         const type
         of allBlockTypes
     ) {
-        grouped[type] = [];
+        grouped[type] =
+            [];
     }
 
     for (
@@ -1805,7 +1659,9 @@ function rebuildChunk(
         of allBlockTypes
     ) {
         const blocks =
-            grouped[type];
+            grouped[
+                type
+            ];
 
         if (
             !blocks.length
@@ -1915,7 +1771,8 @@ function loadChunk(
                 cz
             ),
 
-        meshes: [],
+        meshes:
+            [],
 
         entityIds:
             new Set()
@@ -2222,6 +2079,7 @@ function addLoadedBlock(
 
     chunk.blocks.set(
         key,
+
         {
             x,
             y,
@@ -2245,7 +2103,7 @@ function addLoadedBlock(
 }
 
 // =====================================================
-// PIXEL-ART INVENTORY ICONS
+// PIXEL-ART ITEM ICONS
 // =====================================================
 
 const iconCache =
@@ -2265,12 +2123,7 @@ function createItemIcon(
     }
 
     const c =
-        document.createElement(
-            "canvas"
-        );
-
-    c.width = 16;
-    c.height = 16;
+        makeCanvas();
 
     const x =
         c.getContext(
@@ -2631,7 +2484,7 @@ function createItemIcon(
         type ===
         "axe"
     ) {
-        // ACTUAL PIXEL AXE
+        // Proper pixel axe.
 
         x.fillStyle =
             "#6c4428";
@@ -2720,7 +2573,7 @@ function createItemIcon(
         type ===
         "pickaxe"
     ) {
-        // ACTUAL PIXEL PICKAXE
+        // Proper pixel pickaxe.
 
         x.fillStyle =
             "#7a7a7a";
@@ -2808,9 +2661,29 @@ function createItemIcon(
     else if (
         type ===
         "beef"
+        ||
+        type ===
+        "pork"
+        ||
+        type ===
+        "mutton"
     ) {
+        const base =
+            type === "beef"
+                ? "#7f2f25"
+                : type === "pork"
+                    ? "#c56f73"
+                    : "#8c4b3e";
+
+        const light =
+            type === "beef"
+                ? "#b75a45"
+                : type === "pork"
+                    ? "#e99a9d"
+                    : "#c77b66";
+
         x.fillStyle =
-            "#7f2f25";
+            base;
 
         x.fillRect(
             3,
@@ -2820,7 +2693,7 @@ function createItemIcon(
         );
 
         x.fillStyle =
-            "#b75a45";
+            light;
 
         x.fillRect(
             5,
@@ -2838,90 +2711,6 @@ function createItemIcon(
 
         x.fillStyle =
             "#e0c6ad";
-
-        x.fillRect(
-            10,
-            6,
-            2,
-            3
-        );
-    }
-
-    else if (
-        type ===
-        "pork"
-    ) {
-        x.fillStyle =
-            "#c56f73";
-
-        x.fillRect(
-            3,
-            4,
-            10,
-            8
-        );
-
-        x.fillStyle =
-            "#e99a9d";
-
-        x.fillRect(
-            5,
-            3,
-            6,
-            2
-        );
-
-        x.fillRect(
-            4,
-            11,
-            7,
-            2
-        );
-
-        x.fillStyle =
-            "#f1c0b5";
-
-        x.fillRect(
-            10,
-            6,
-            2,
-            3
-        );
-    }
-
-    else if (
-        type ===
-        "mutton"
-    ) {
-        x.fillStyle =
-            "#8c4b3e";
-
-        x.fillRect(
-            3,
-            4,
-            10,
-            8
-        );
-
-        x.fillStyle =
-            "#c77b66";
-
-        x.fillRect(
-            5,
-            3,
-            6,
-            2
-        );
-
-        x.fillRect(
-            4,
-            11,
-            7,
-            2
-        );
-
-        x.fillStyle =
-            "#ddd0bd";
 
         x.fillRect(
             10,
@@ -3015,7 +2804,8 @@ function removeItemFromInventory(
     if (
         inventory[type] <= 0
     ) {
-        inventory[type] = 0;
+        inventory[type] =
+            0;
 
         for (
             let i = 0;
@@ -3088,10 +2878,12 @@ function updateHotbar() {
             selectedHotbarIndex
         );
 
-        slot.innerHTML = "";
+        slot.innerHTML =
+            "";
 
         css(
             slot,
+
             {
                 position:
                     "relative",
@@ -3118,6 +2910,7 @@ function updateHotbar() {
                 document.createElement(
                     "div"
                 ),
+
                 {
                     position:
                         "absolute",
@@ -3164,6 +2957,7 @@ function updateHotbar() {
                 document.createElement(
                     "div"
                 ),
+
                 {
                     width:
                         "34px",
@@ -3197,6 +2991,7 @@ function updateHotbar() {
                 document.createElement(
                     "div"
                 ),
+
                 {
                     position:
                         "absolute",
@@ -3253,6 +3048,7 @@ const craftingOverlay =
         document.createElement(
             "div"
         ),
+
         {
             display:
                 "none",
@@ -3289,6 +3085,7 @@ const craftingPanel =
         document.createElement(
             "div"
         ),
+
         {
             width:
                 "min(780px, 90vw)",
@@ -3336,7 +3133,8 @@ function canCraft(
             ]
         ) =>
             (
-                inventory[type] ||
+                inventory[type]
+                ||
                 0
             ) >= amount
     );
@@ -3377,9 +3175,11 @@ function craftRecipe(
     ) {
         inventory[type] =
             (
-                inventory[type] ||
+                inventory[type]
+                ||
                 0
-            ) +
+            )
+            +
             amount;
     }
 
@@ -3446,6 +3246,7 @@ function updateCraftingMenu() {
             document.createElement(
                 "div"
             ),
+
             {
                 fontSize:
                     "32px",
@@ -3476,6 +3277,7 @@ function updateCraftingMenu() {
             document.createElement(
                 "div"
             ),
+
             {
                 textAlign:
                     "center",
@@ -3492,30 +3294,29 @@ function updateCraftingMenu() {
         );
 
     hint.textContent =
-        "Press E to close • Click an inventory item to put it in the selected hotbar slot";
+        "Press E to close • Click an item to put it in your selected hotbar slot";
 
     craftingPanel.appendChild(
         hint
     );
 
     const inventoryTitle =
-        document.createElement(
-            "div"
+        css(
+            document.createElement(
+                "div"
+            ),
+
+            {
+                fontSize:
+                    "21px",
+
+                marginBottom:
+                    "10px"
+            }
         );
 
     inventoryTitle.textContent =
         "INVENTORY";
-
-    css(
-        inventoryTitle,
-        {
-            fontSize:
-                "21px",
-
-            marginBottom:
-                "10px"
-        }
-    );
 
     craftingPanel.appendChild(
         inventoryTitle
@@ -3526,6 +3327,7 @@ function updateCraftingMenu() {
             document.createElement(
                 "div"
             ),
+
             {
                 display:
                     "grid",
@@ -3555,6 +3357,7 @@ function updateCraftingMenu() {
                 document.createElement(
                     "div"
                 ),
+
                 {
                     display:
                         "flex",
@@ -3586,6 +3389,7 @@ function updateCraftingMenu() {
                 document.createElement(
                     "div"
                 ),
+
                 {
                     width:
                         "36px",
@@ -3634,6 +3438,7 @@ function updateCraftingMenu() {
         ) {
             card.addEventListener(
                 "click",
+
                 () =>
                     assignSelectedHotbar(
                         type
@@ -3651,23 +3456,22 @@ function updateCraftingMenu() {
     );
 
     const recipesTitle =
-        document.createElement(
-            "div"
+        css(
+            document.createElement(
+                "div"
+            ),
+
+            {
+                fontSize:
+                    "21px",
+
+                marginBottom:
+                    "10px"
+            }
         );
 
     recipesTitle.textContent =
         "CRAFTING";
-
-    css(
-        recipesTitle,
-        {
-            fontSize:
-                "21px",
-
-            marginBottom:
-                "10px"
-        }
-    );
 
     craftingPanel.appendChild(
         recipesTitle
@@ -3682,6 +3486,7 @@ function updateCraftingMenu() {
                 document.createElement(
                     "div"
                 ),
+
                 {
                     display:
                         "flex",
@@ -3719,6 +3524,7 @@ function updateCraftingMenu() {
                 document.createElement(
                     "div"
                 ),
+
                 {
                     fontSize:
                         "20px",
@@ -3770,6 +3576,7 @@ function updateCraftingMenu() {
 
         css(
             button,
+
             {
                 minWidth:
                     "135px",
@@ -3808,6 +3615,7 @@ function updateCraftingMenu() {
 
         button.addEventListener(
             "click",
+
             () =>
                 craftRecipe(
                     recipe
@@ -3874,26 +3682,26 @@ function updateSurvivalHud() {
         i < 10;
         i++
     ) {
-        const healthPoints =
+        const hp =
             health -
             i * 2;
 
         healthMeter.parts[i].style.background =
-            healthPoints >= 2
+            hp >= 2
                 ? "#b92e2e"
-                : healthPoints > 0
-                    ? "linear-gradient(to right, #b92e2e 50%, #3a2020 50%)"
+                : hp > 0
+                    ? "linear-gradient(to right,#b92e2e 50%,#3a2020 50%)"
                     : "#3a2020";
 
-        const hungerPoints =
+        const food =
             hunger -
             i * 2;
 
         hungerMeter.parts[i].style.background =
-            hungerPoints >= 2
+            food >= 2
                 ? "#c8872d"
-                : hungerPoints > 0
-                    ? "linear-gradient(to right, #c8872d 50%, #3d2d1c 50%)"
+                : food > 0
+                    ? "linear-gradient(to right,#c8872d 50%,#3d2d1c 50%)"
                     : "#3d2d1c";
     }
 
@@ -3913,6 +3721,7 @@ function flashDamage() {
             damageFlash.style.opacity =
                 "0";
         },
+
         90
     );
 }
@@ -3926,12 +3735,10 @@ function takeDamage(
             amount,
 
             0,
-
             maxHealth
         );
 
     flashDamage();
-
     updateSurvivalHud();
 
     if (
@@ -4044,7 +3851,9 @@ function eatSelectedFood() {
         selectedItem();
 
     if (
-        !foodValues[type]
+        !foodValues[
+            type
+        ]
     ) {
         return false;
     }
@@ -4123,6 +3932,7 @@ function addEntityPart(
 ) {
     const mesh =
         new THREE.Mesh(
+
             new THREE.BoxGeometry(
                 size.x,
                 size.y,
@@ -4154,6 +3964,10 @@ function addEntityPart(
     return mesh;
 }
 
+// =====================================================
+// MOB MODELS
+// =====================================================
+
 function buildAnimalModel(
     type,
     entityId
@@ -4161,133 +3975,37 @@ function buildAnimalModel(
     const group =
         new THREE.Group();
 
-    if (
-        type ===
-        "cow"
-    ) {
-        addEntityPart(
-            group,
-            entityId,
-            {
-                x: 1.35,
-                y: 0.75,
-                z: 0.72
-            },
-            0x6c432b,
-            {
-                x: 0,
-                y: 0.82,
-                z: 0
-            }
-        );
-
-        addEntityPart(
-            group,
-            entityId,
-            {
-                x: 0.55,
-                y: 0.55,
-                z: 0.55
-            },
-            0x7d5034,
-            {
-                x: 0,
-                y: 0.9,
-                z: 0.56
-            }
-        );
-
-        addEntityPart(
-            group,
-            entityId,
-            {
-                x: 0.42,
-                y: 0.25,
-                z: 0.14
-            },
-            0xb98a70,
-            {
-                x: 0,
-                y: 0.76,
-                z: 0.86
-            }
-        );
-
-        addEntityPart(
-            group,
-            entityId,
-            {
-                x: 0.32,
-                y: 0.22,
-                z: 0.05
-            },
-            0xe8e0d2,
-            {
-                x: -0.34,
-                y: 1.08,
-                z: 0.22
-            }
-        );
-
-        addEntityPart(
-            group,
-            entityId,
-            {
-                x: 0.28,
-                y: 0.2,
-                z: 0.05
-            },
-            0xe8e0d2,
-            {
-                x: 0.35,
-                y: 0.7,
-                z: -0.18
-            }
-        );
-
-        for (
-            const [
-                x,
-                z
-            ]
-            of [
-                [-0.45, -0.22],
-                [0.45, -0.22],
-                [-0.45, 0.22],
-                [0.45, 0.22]
-            ]
-        ) {
+    const part =
+        (
+            size,
+            color,
+            position
+        ) =>
             addEntityPart(
                 group,
                 entityId,
-                {
-                    x: 0.2,
-                    y: 0.62,
-                    z: 0.2
-                },
-                0x3d2b22,
-                {
-                    x,
-                    y: 0.31,
-                    z
-                }
+                size,
+                color,
+                position
             );
-        }
-    }
 
-    else if (
+    // =================================================
+    // PIG
+    // =================================================
+
+    if (
         type ===
         "pig"
     ) {
-        addEntityPart(
-            group,
-            entityId,
+        part(
             {
-                x: 1.2,
-                y: 0.7,
-                z: 0.7
+                x: 1.25,
+                y: 0.72,
+                z: 0.78
             },
-            0xd98286,
+
+            0xd77f86,
+
             {
                 x: 0,
                 y: 0.72,
@@ -4295,181 +4013,506 @@ function buildAnimalModel(
             }
         );
 
-        addEntityPart(
-            group,
-            entityId,
+        part(
             {
-                x: 0.55,
-                y: 0.5,
-                z: 0.5
+                x: 0.62,
+                y: 0.58,
+                z: 0.58
             },
-            0xe49296,
+
+            0xe58d94,
+
             {
                 x: 0,
-                y: 0.8,
-                z: 0.54
+                y: 0.82,
+                z: 0.58
             }
         );
 
-        addEntityPart(
-            group,
-            entityId,
+        part(
             {
-                x: 0.38,
+                x: 0.42,
                 y: 0.25,
-                z: 0.14
+                z: 0.18
             },
-            0xf1a7aa,
+
+            0xf0a0a5,
+
             {
                 x: 0,
-                y: 0.7,
-                z: 0.84
+                y: 0.72,
+                z: 0.92
+            }
+        );
+
+        // Nostrils
+
+        part(
+            {
+                x: 0.06,
+                y: 0.07,
+                z: 0.03
+            },
+
+            0x5e3035,
+
+            {
+                x: -0.10,
+                y: 0.74,
+                z: 1.02
+            }
+        );
+
+        part(
+            {
+                x: 0.06,
+                y: 0.07,
+                z: 0.03
+            },
+
+            0x5e3035,
+
+            {
+                x: 0.10,
+                y: 0.74,
+                z: 1.02
+            }
+        );
+
+        // Ears
+
+        part(
+            {
+                x: 0.16,
+                y: 0.18,
+                z: 0.12
+            },
+
+            0xc66e76,
+
+            {
+                x: -0.22,
+                y: 1.12,
+                z: 0.62
+            }
+        );
+
+        part(
+            {
+                x: 0.16,
+                y: 0.18,
+                z: 0.12
+            },
+
+            0xc66e76,
+
+            {
+                x: 0.22,
+                y: 1.12,
+                z: 0.62
             }
         );
 
         for (
             const [
-                x,
-                z
+                px,
+                pz
             ]
             of [
-                [-0.4, -0.22],
-                [0.4, -0.22],
-                [-0.4, 0.22],
-                [0.4, 0.22]
+                [-0.42, -0.24],
+                [0.42, -0.24],
+                [-0.42, 0.24],
+                [0.42, 0.24]
             ]
         ) {
-            addEntityPart(
-                group,
-                entityId,
+            part(
                 {
                     x: 0.18,
                     y: 0.48,
                     z: 0.18
                 },
-                0xbd6d73,
+
+                0xb76269,
+
                 {
-                    x,
+                    x: px,
                     y: 0.24,
-                    z
+                    z: pz
                 }
             );
         }
     }
 
+    // =================================================
+    // COW
+    // =================================================
+
     else if (
         type ===
-        "sheep"
+        "cow"
     ) {
-        addEntityPart(
-            group,
-            entityId,
+        part(
             {
-                x: 1.35,
-                y: 0.9,
+                x: 1.42,
+                y: 0.82,
                 z: 0.82
             },
-            0xe3dfd2,
+
+            0x6a432d,
+
             {
                 x: 0,
-                y: 0.86,
+                y: 0.82,
                 z: 0
             }
         );
 
-        addEntityPart(
-            group,
-            entityId,
+        // Patches
+
+        part(
             {
-                x: 0.5,
-                y: 0.55,
-                z: 0.48
+                x: 0.34,
+                y: 0.28,
+                z: 0.05
             },
-            0x4a4945,
+
+            0xd9cbb5,
+
             {
-                x: 0,
-                y: 0.86,
-                z: 0.58
+                x: -0.34,
+                y: 0.95,
+                z: 0.41
             }
         );
 
-        addEntityPart(
-            group,
-            entityId,
+        part(
             {
-                x: 0.58,
-                y: 0.6,
-                z: 0.18
+                x: 0.30,
+                y: 0.24,
+                z: 0.05
             },
-            0xf0ede3,
+
+            0xd9cbb5,
+
+            {
+                x: 0.32,
+                y: 0.70,
+                z: -0.41
+            }
+        );
+
+        // Head
+
+        part(
+            {
+                x: 0.62,
+                y: 0.62,
+                z: 0.58
+            },
+
+            0x754a31,
+
             {
                 x: 0,
-                y: 1.07,
-                z: 0.47
+                y: 0.90,
+                z: 0.63
+            }
+        );
+
+        // Muzzle
+
+        part(
+            {
+                x: 0.46,
+                y: 0.25,
+                z: 0.18
+            },
+
+            0xc79c7e,
+
+            {
+                x: 0,
+                y: 0.77,
+                z: 0.96
+            }
+        );
+
+        // Ears
+
+        part(
+            {
+                x: 0.22,
+                y: 0.14,
+                z: 0.15
+            },
+
+            0x5a3927,
+
+            {
+                x: -0.38,
+                y: 1.12,
+                z: 0.60
+            }
+        );
+
+        part(
+            {
+                x: 0.22,
+                y: 0.14,
+                z: 0.15
+            },
+
+            0x5a3927,
+
+            {
+                x: 0.38,
+                y: 1.12,
+                z: 0.60
+            }
+        );
+
+        // Tiny horns
+
+        part(
+            {
+                x: 0.10,
+                y: 0.18,
+                z: 0.10
+            },
+
+            0xe4dac5,
+
+            {
+                x: -0.22,
+                y: 1.26,
+                z: 0.60
+            }
+        );
+
+        part(
+            {
+                x: 0.10,
+                y: 0.18,
+                z: 0.10
+            },
+
+            0xe4dac5,
+
+            {
+                x: 0.22,
+                y: 1.26,
+                z: 0.60
             }
         );
 
         for (
             const [
-                x,
-                z
+                px,
+                pz
             ]
             of [
-                [-0.44, -0.24],
-                [0.44, -0.24],
-                [-0.44, 0.24],
-                [0.44, 0.24]
+                [-0.47, -0.25],
+                [0.47, -0.25],
+                [-0.47, 0.25],
+                [0.47, 0.25]
             ]
         ) {
-            addEntityPart(
-                group,
-                entityId,
+            part(
                 {
-                    x: 0.18,
-                    y: 0.52,
-                    z: 0.18
+                    x: 0.20,
+                    y: 0.62,
+                    z: 0.20
                 },
-                0x494846,
+
+                0x3c2b23,
+
                 {
-                    x,
-                    y: 0.26,
-                    z
+                    x: px,
+                    y: 0.31,
+                    z: pz
                 }
             );
         }
     }
 
+    // =================================================
+    // SHEEP
+    // =================================================
+
     else if (
         type ===
-        "mimic"
+        "sheep"
     ) {
-        // Creepy fake wooden thing.
-
-        addEntityPart(
-            group,
-            entityId,
+        part(
             {
-                x: 1.0,
-                y: 0.82,
-                z: 0.82
+                x: 1.42,
+                y: 0.95,
+                z: 0.88
             },
-            0x4b2d1f,
+
+            0xe6e2d7,
+
             {
                 x: 0,
-                y: 0.82,
+                y: 0.88,
                 z: 0
             }
         );
 
-        addEntityPart(
-            group,
-            entityId,
+        // Wool lumps
+
+        part(
             {
-                x: 0.92,
-                y: 0.18,
-                z: 0.88
+                x: 0.42,
+                y: 0.20,
+                z: 0.50
             },
-            0x2a1713,
+
+            0xf2efe8,
+
+            {
+                x: -0.35,
+                y: 1.35,
+                z: 0
+            }
+        );
+
+        part(
+            {
+                x: 0.42,
+                y: 0.20,
+                z: 0.50
+            },
+
+            0xf2efe8,
+
+            {
+                x: 0.35,
+                y: 1.35,
+                z: 0
+            }
+        );
+
+        // Face
+
+        part(
+            {
+                x: 0.54,
+                y: 0.58,
+                z: 0.48
+            },
+
+            0x444341,
+
+            {
+                x: 0,
+                y: 0.88,
+                z: 0.63
+            }
+        );
+
+        // Wool forehead
+
+        part(
+            {
+                x: 0.60,
+                y: 0.18,
+                z: 0.42
+            },
+
+            0xf0ede5,
+
+            {
+                x: 0,
+                y: 1.20,
+                z: 0.59
+            }
+        );
+
+        // Ears
+
+        part(
+            {
+                x: 0.20,
+                y: 0.13,
+                z: 0.13
+            },
+
+            0x3b3a38,
+
+            {
+                x: -0.34,
+                y: 1.04,
+                z: 0.62
+            }
+        );
+
+        part(
+            {
+                x: 0.20,
+                y: 0.13,
+                z: 0.13
+            },
+
+            0x3b3a38,
+
+            {
+                x: 0.34,
+                y: 1.04,
+                z: 0.62
+            }
+        );
+
+        for (
+            const [
+                px,
+                pz
+            ]
+            of [
+                [-0.45, -0.25],
+                [0.45, -0.25],
+                [-0.45, 0.25],
+                [0.45, 0.25]
+            ]
+        ) {
+            part(
+                {
+                    x: 0.18,
+                    y: 0.56,
+                    z: 0.18
+                },
+
+                0x3f3e3b,
+
+                {
+                    x: px,
+                    y: 0.28,
+                    z: pz
+                }
+            );
+        }
+    }
+
+    // =================================================
+    // MIMIC
+    // =================================================
+
+    else if (
+        type ===
+        "mimic"
+    ) {
+        // Dark torso.
+        // From far away it should almost look like scenery.
+
+        part(
+            {
+                x: 0.82,
+                y: 1.18,
+                z: 0.56
+            },
+
+            0x171513,
+
             {
                 x: 0,
                 y: 1.18,
@@ -4477,70 +4520,151 @@ function buildAnimalModel(
             }
         );
 
-        addEntityPart(
-            group,
-            entityId,
+        // Hunched shoulders.
+
+        part(
             {
-                x: 0.16,
-                y: 0.16,
-                z: 0.06
+                x: 0.94,
+                y: 0.32,
+                z: 0.62
             },
-            0xff2424,
+
+            0x211c19,
+
             {
-                x: -0.22,
-                y: 0.88,
-                z: 0.43
+                x: 0,
+                y: 1.82,
+                z: 0.02
             }
         );
 
-        addEntityPart(
-            group,
-            entityId,
+        // Almost-black face.
+
+        part(
             {
-                x: 0.16,
-                y: 0.16,
-                z: 0.06
+                x: 0.66,
+                y: 0.44,
+                z: 0.08
             },
-            0xff2424,
+
+            0x090909,
+
             {
-                x: 0.22,
-                y: 0.88,
-                z: 0.43
+                x: 0,
+                y: 1.50,
+                z: 0.31
             }
         );
 
-        for (
-            const [
-                x,
-                z
-            ]
-            of [
-                [-0.32, -0.22],
-                [0.32, -0.22],
-                [-0.32, 0.22],
-                [0.32, 0.22]
-            ]
-        ) {
-            addEntityPart(
-                group,
-                entityId,
-                {
-                    x: 0.12,
-                    y: 0.7,
-                    z: 0.12
-                },
-                0x1d1715,
-                {
-                    x,
-                    y: 0.35,
-                    z
-                }
-            );
-        }
+        // Tiny red eyes.
+
+        part(
+            {
+                x: 0.09,
+                y: 0.09,
+                z: 0.04
+            },
+
+            0xb30000,
+
+            {
+                x: -0.17,
+                y: 1.56,
+                z: 0.36
+            }
+        );
+
+        part(
+            {
+                x: 0.09,
+                y: 0.09,
+                z: 0.04
+            },
+
+            0xb30000,
+
+            {
+                x: 0.17,
+                y: 1.56,
+                z: 0.36
+            }
+        );
+
+        // Long skinny legs.
+
+        part(
+            {
+                x: 0.16,
+                y: 1.05,
+                z: 0.16
+            },
+
+            0x0d0c0b,
+
+            {
+                x: -0.24,
+                y: 0.52,
+                z: 0
+            }
+        );
+
+        part(
+            {
+                x: 0.16,
+                y: 1.05,
+                z: 0.16
+            },
+
+            0x0d0c0b,
+
+            {
+                x: 0.24,
+                y: 0.52,
+                z: 0
+            }
+        );
+
+        // Dangling arms.
+
+        part(
+            {
+                x: 0.12,
+                y: 0.88,
+                z: 0.12
+            },
+
+            0x100e0d,
+
+            {
+                x: -0.50,
+                y: 1.03,
+                z: 0
+            }
+        );
+
+        part(
+            {
+                x: 0.12,
+                y: 0.88,
+                z: 0.12
+            },
+
+            0x100e0d,
+
+            {
+                x: 0.50,
+                y: 1.03,
+                z: 0
+            }
+        );
     }
 
     return group;
 }
+
+// =====================================================
+// ENTITY STATS / SPAWNING
+// =====================================================
 
 function entityStats(
     type
@@ -4755,8 +4879,13 @@ function spawnEntityForChunk(
         spawnX,
 
         getTerrainHeight(
-            Math.round(spawnX),
-            Math.round(spawnZ)
+            Math.round(
+                spawnX
+            ),
+
+            Math.round(
+                spawnZ
+            )
         ) + 0.5,
 
         spawnZ
@@ -4784,12 +4913,15 @@ function spawnEntityForChunk(
             coordinateRandom(
                 spawnX + 99,
                 spawnZ - 71
-            ) *
-            Math.PI *
+            )
+            *
+            Math.PI
+            *
             2,
 
         wanderTimer:
-            1 +
+            1
+            +
             coordinateRandom(
                 spawnX + 4,
                 spawnZ + 9
@@ -4934,6 +5066,7 @@ function getTargetEntity() {
             Array.from(
                 entityHitMeshes
             ),
+
             false
         );
 
@@ -5147,15 +5280,13 @@ function updateEntities(
         entity.attackCooldown =
             Math.max(
                 0,
-                entity.attackCooldown -
-                delta
+                entity.attackCooldown - delta
             );
 
         entity.fleeTimer =
             Math.max(
                 0,
-                entity.fleeTimer -
-                delta
+                entity.fleeTimer - delta
             );
 
         const dx =
@@ -5230,21 +5361,14 @@ function updateEntities(
             ) {
                 entity.direction +=
                     (
-                        coordinateRandom(
-                            entity.group.position.x +
-                            performance.now() *
-                            0.001,
-
-                            entity.group.position.z
-                        ) -
+                        Math.random()
+                        -
                         0.5
-                    ) *
-                    2.4;
+                    ) * 2.4;
 
                 entity.wanderTimer =
                     1.5 +
-                    Math.random() *
-                    3;
+                    Math.random() * 3;
             }
 
             direction =
@@ -5252,19 +5376,25 @@ function updateEntities(
         }
 
         const nextX =
-            entity.group.position.x +
+            entity.group.position.x
+            +
             Math.sin(
                 direction
-            ) *
-            speed *
+            )
+            *
+            speed
+            *
             delta;
 
         const nextZ =
-            entity.group.position.z +
+            entity.group.position.z
+            +
             Math.cos(
                 direction
-            ) *
-            speed *
+            )
+            *
+            speed
+            *
             delta;
 
         if (
@@ -5286,7 +5416,8 @@ function updateEntities(
 
         else {
             entity.direction +=
-                Math.PI *
+                Math.PI
+                *
                 (
                     0.5 +
                     Math.random() *
@@ -5303,7 +5434,8 @@ function updateEntities(
                 Math.round(
                     entity.group.position.z
                 )
-            ) +
+            )
+            +
             0.5;
 
         entity.group.rotation.y =
@@ -5320,7 +5452,8 @@ function updateEntities(
                 Math.sin(
                     performance.now() *
                     0.012
-                ) *
+                )
+                *
                 0.025;
         }
 
@@ -5331,7 +5464,7 @@ function updateEntities(
 }
 
 // =====================================================
-// PLAYER COLLISION / MOVEMENT
+// COLLISION
 // =====================================================
 
 function playerCollides(
@@ -5432,21 +5565,27 @@ function playerCollides(
                 const overlapsX =
                     playerMaxX >
                     x - 0.5
+
                     &&
+
                     playerMinX <
                     x + 0.5;
 
                 const overlapsY =
                     playerMaxY >
                     y - 0.5
+
                     &&
+
                     playerMinY <
                     y + 0.5;
 
                 const overlapsZ =
                     playerMaxZ >
                     z - 0.5
+
                     &&
+
                     playerMinZ <
                     z + 0.5;
 
@@ -5503,19 +5642,29 @@ function blockWouldHitPlayer(
     return (
         maxX >
         x - 0.5
+
         &&
+
         minX <
         x + 0.5
+
         &&
+
         maxY >
         y - 0.5
+
         &&
+
         minY <
         y + 0.5
+
         &&
+
         maxZ >
         z - 0.5
+
         &&
+
         minZ <
         z + 0.5
     );
@@ -5692,6 +5841,7 @@ function getTargetBlock() {
             Array.from(
                 interactiveMeshes
             ),
+
             false
         );
 
@@ -5947,7 +6097,7 @@ function placeTargetBlock() {
 }
 
 // =====================================================
-// PLAYER UPDATE / RESPAWN
+// MOVEMENT / RESPAWN
 // =====================================================
 
 function updateMovement(
@@ -6108,6 +6258,7 @@ function respawnPlayer() {
 function setupControls() {
     renderer.domElement.addEventListener(
         "click",
+
         () => {
             if (
                 !craftingOpen
@@ -6123,12 +6274,14 @@ function setupControls() {
 
     renderer.domElement.addEventListener(
         "contextmenu",
+
         event =>
             event.preventDefault()
     );
 
     document.addEventListener(
         "pointerlockchange",
+
         () => {
             if (
                 document.pointerLockElement !==
@@ -6144,6 +6297,7 @@ function setupControls() {
 
     document.addEventListener(
         "mousemove",
+
         event => {
             if (
                 craftingOpen
@@ -6187,6 +6341,7 @@ function setupControls() {
 
     document.addEventListener(
         "keydown",
+
         event => {
             if (
                 event.code ===
@@ -6253,7 +6408,6 @@ function setupControls() {
                         1;
 
                     updateHotbar();
-
                     resetMining();
                 }
             }
@@ -6262,6 +6416,7 @@ function setupControls() {
 
     document.addEventListener(
         "keyup",
+
         event => {
             keys[
                 event.code
@@ -6272,6 +6427,7 @@ function setupControls() {
 
     renderer.domElement.addEventListener(
         "mousedown",
+
         event => {
             if (
                 craftingOpen
@@ -6335,6 +6491,7 @@ function setupControls() {
 
     document.addEventListener(
         "mouseup",
+
         event => {
             if (
                 event.button ===
@@ -6350,6 +6507,7 @@ function setupControls() {
 
     renderer.domElement.addEventListener(
         "wheel",
+
         event => {
             if (
                 craftingOpen
@@ -6363,8 +6521,7 @@ function setupControls() {
             event.preventDefault();
 
             selectedHotbarIndex +=
-                event.deltaY >
-                0
+                event.deltaY > 0
                     ? 1
                     : -1;
 
@@ -6385,9 +6542,9 @@ function setupControls() {
             }
 
             updateHotbar();
-
             resetMining();
         },
+
         {
             passive:
                 false
@@ -6401,6 +6558,7 @@ function setupControls() {
 
 playButton.addEventListener(
     "click",
+
     () => {
         startScreen.style.display =
             "none";
@@ -6551,8 +6709,7 @@ function animate() {
     playerAttackCooldown =
         Math.max(
             0,
-            playerAttackCooldown -
-            delta
+            playerAttackCooldown - delta
         );
 
     updateMovement(
@@ -6579,6 +6736,7 @@ function animate() {
 
 window.addEventListener(
     "resize",
+
     () => {
         if (
             !camera
