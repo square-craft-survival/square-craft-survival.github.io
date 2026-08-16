@@ -241,6 +241,11 @@ let chunkLoadQueue = [];
 const BLOCKS = [
     "grass",
     "dirt",
+    "sand",
+    "gravel",
+    "clay",
+    "sandstone",
+    "brick",
     "wood",
     "leaves",
     "stone",
@@ -255,6 +260,11 @@ const BLOCKS = [
 const PLACEABLE = new Set([
     "grass",
     "dirt",
+    "sand",
+    "gravel",
+    "clay",
+    "sandstone",
+    "brick",
     "wood",
     "leaves",
     "stone",
@@ -268,6 +278,11 @@ const PLACEABLE = new Set([
 const INVENTORY = {
     grass: 0,
     dirt: 0,
+    sand: 0,
+    gravel: 0,
+    clay: 0,
+    sandstone: 0,
+    brick: 0,
     wood: 0,
     leaves: 0,
     stone: 0,
@@ -316,6 +331,28 @@ const RECIPES = [
             craftingWood: 5
         },
         text: "1 Wood → 5 Crafting Wood"
+    },
+
+    {
+        name: "Sandstone",
+        input: {
+            sand: 4
+        },
+        output: {
+            sandstone: 1
+        },
+        text: "4 Sand to 1 Sandstone"
+    },
+
+    {
+        name: "Bricks",
+        input: {
+            clay: 4
+        },
+        output: {
+            brick: 1
+        },
+        text: "4 Clay to 1 Brick"
     },
 
     {
@@ -411,6 +448,11 @@ const FOOD = {
 const NAMES = {
     grass: "Grass",
     dirt: "Dirt",
+    sand: "Sand",
+    gravel: "Gravel",
+    clay: "Clay",
+    sandstone: "Sandstone",
+    brick: "Brick",
     wood: "Wood",
     leaves: "Leaves",
     stone: "Stone",
@@ -699,6 +741,51 @@ function terrainHeight(
         1,
         15
     );
+}
+
+// A few wide patches make the world less same-y without changing the terrain
+// height, cave layout, structures, or chunk edit behavior.
+function surfaceBlockAt(
+    x,
+    z
+) {
+    const patch =
+        hash2(
+            Math.floor(
+                x /
+                5
+            ),
+
+            Math.floor(
+                z /
+                5
+            ),
+
+            909
+        );
+
+    if (
+        patch <
+        0.11
+    ) {
+        return "sand";
+    }
+
+    if (
+        patch <
+        0.16
+    ) {
+        return "gravel";
+    }
+
+    if (
+        patch <
+        0.19
+    ) {
+        return "clay";
+    }
+
+    return "grass";
 }
 
 function caveNoise(
@@ -1768,6 +1855,12 @@ function generateChunkBlocks(
                     z
                 );
 
+            const surfaceBlock =
+                surfaceBlockAt(
+                    x,
+                    z
+                );
+
             for (
                 let y =
                     BEDROCK_Y;
@@ -1816,7 +1909,7 @@ function generateChunkBlocks(
                         x,
                         y,
                         z,
-                        "grass"
+                        surfaceBlock
                     );
                 }
 
@@ -1829,21 +1922,53 @@ function generateChunkBlocks(
                         x,
                         y,
                         z,
-                        "dirt"
+                        surfaceBlock ===
+                        "sand"
+                            ? "sand"
+                            : surfaceBlock ===
+                            "gravel"
+                                ? "gravel"
+                                : surfaceBlock ===
+                                "clay"
+                                    ? "clay"
+                                    : "dirt"
                     );
                 }
 
                 else {
+                    const looseMaterial =
+                        hash3(
+                            Math.floor(
+                                x /
+                                2
+                            ),
+
+                            y,
+
+                            Math.floor(
+                                z /
+                                2
+                            ),
+
+                            910
+                        );
+
                     put(
                         x,
                         y,
                         z,
 
-                        oreAt(
-                            x,
-                            y,
-                            z
-                        )
+                        looseMaterial <
+                        0.018
+                            ? "gravel"
+                            : looseMaterial <
+                            0.027
+                                ? "clay"
+                                : oreAt(
+                                    x,
+                                    y,
+                                    z
+                                )
                     );
                 }
             }
@@ -2519,6 +2644,86 @@ function createMaterials() {
 
     materials.dirt =
         dirt;
+
+    materials.sand =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#c9ad67",
+
+                    [
+                        "#e2ca83",
+                        "#a98c50",
+                        "#d7ba72"
+                    ],
+
+                    42
+                )
+        });
+
+    materials.gravel =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#77736d",
+
+                    [
+                        "#9a948a",
+                        "#585650",
+                        "#b0aaa0"
+                    ],
+
+                    55
+                )
+        });
+
+    materials.clay =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#a96955",
+
+                    [
+                        "#c58168",
+                        "#824c3f",
+                        "#d59878"
+                    ],
+
+                    46
+                )
+        });
+
+    materials.sandstone =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#b79555",
+
+                    [
+                        "#d4b870",
+                        "#8f703a",
+                        "#c4a45e"
+                    ],
+
+                    38
+                )
+        });
+
+    materials.brick =
+        new THREE.MeshLambertMaterial({
+            map:
+                speckled(
+                    "#954433",
+
+                    [
+                        "#bc6049",
+                        "#6c2d25",
+                        "#d37859"
+                    ],
+
+                    34
+                )
+        });
 
     materials.wood = [
         woodSide,
@@ -3371,6 +3576,56 @@ function itemIcon(
 
     else if (
         type ===
+        "sand"
+    ) {
+        blockIcon(
+            "#c9ad67",
+            "#e2ca83"
+        );
+    }
+
+    else if (
+        type ===
+        "gravel"
+    ) {
+        blockIcon(
+            "#77736d",
+            "#b0aaa0"
+        );
+    }
+
+    else if (
+        type ===
+        "clay"
+    ) {
+        blockIcon(
+            "#a96955",
+            "#d59878"
+        );
+    }
+
+    else if (
+        type ===
+        "sandstone"
+    ) {
+        blockIcon(
+            "#b79555",
+            "#d4b870"
+        );
+    }
+
+    else if (
+        type ===
+        "brick"
+    ) {
+        blockIcon(
+            "#954433",
+            "#d37859"
+        );
+    }
+
+    else if (
+        type ===
         "wood"
     ) {
         x.fillStyle =
@@ -3755,25 +4010,6 @@ function addItem(
     INVENTORY[type] +=
         amount;
 
-    if (
-        !hotbarItems.includes(
-            type
-        )
-    ) {
-        const i =
-            hotbarItems.indexOf(
-                null
-            );
-
-        if (
-            i !==
-            -1
-        ) {
-            hotbarItems[i] =
-                type;
-        }
-    }
-
     updateHotbar();
     updateCraftingMenu();
 }
@@ -3854,6 +4090,24 @@ function assignHotbar(
         type;
 
     updateHotbar();
+}
+
+function storeHotbarItem(
+    index
+) {
+    if (
+        !hotbarItems[index]
+    ) {
+        return;
+    }
+
+    // Counts always live in INVENTORY. Clearing this reference simply puts the
+    // stack back in storage; it never deletes anything from the player.
+    hotbarItems[index] =
+        null;
+
+    updateHotbar();
+    updateCraftingMenu();
 }
 
 function updateHotbar() {
@@ -4191,32 +4445,6 @@ function craft(
         }
     }
 
-    for (
-        const t
-        of Object.keys(
-            recipe.output
-        )
-    ) {
-        if (
-            !hotbarItems.includes(
-                t
-            )
-        ) {
-            const i =
-                hotbarItems.indexOf(
-                    null
-                );
-
-            if (
-                i !==
-                -1
-            ) {
-                hotbarItems[i] =
-                    t;
-            }
-        }
-    }
-
     updateHotbar();
     updateCraftingMenu();
 }
@@ -4274,11 +4502,230 @@ function updateCraftingMenu() {
         );
 
     hint.textContent =
-        "Press E to close • Click an item to put it in the selected hotbar slot";
+        "Press E to close • Click storage to equip it • Click a HUD item to store it";
 
     craftingPanel.append(
         title,
         hint
+    );
+
+    const hudTitle =
+        document.createElement(
+            "h3"
+        );
+
+    hudTitle.textContent =
+        "HUD BAR";
+
+    craftingPanel.appendChild(
+        hudTitle
+    );
+
+    const hudGrid =
+        css(
+            document.createElement(
+                "div"
+            ),
+
+            {
+                display:
+                    "grid",
+
+                gridTemplateColumns:
+                    "repeat(7,minmax(72px,1fr))",
+
+                gap:
+                    "8px",
+
+                marginBottom:
+                    "24px"
+            }
+        );
+
+    for (
+        let i = 0;
+        i < hotbarItems.length;
+        i++
+    ) {
+        const type =
+            hotbarItems[i];
+
+        const slot =
+            css(
+                document.createElement(
+                    "button"
+                ),
+
+                {
+                    minHeight:
+                        "76px",
+
+                    position:
+                        "relative",
+
+                    color:
+                        "white",
+
+                    background:
+                        i === selectedHotbar
+                            ? "#536f3c"
+                            : "#333",
+
+                    border:
+                        i === selectedHotbar
+                            ? "3px solid #b2df6f"
+                            : "3px solid #151515",
+
+                    cursor:
+                        "pointer",
+
+                    font:
+                        "inherit"
+                }
+            );
+
+        const slotNumber =
+            css(
+                document.createElement(
+                    "span"
+                ),
+
+                {
+                    position:
+                        "absolute",
+
+                    top:
+                        "4px",
+
+                    left:
+                        "6px",
+
+                    fontSize:
+                        "12px",
+
+                    color:
+                        "#ddd"
+                }
+            );
+
+        slotNumber.textContent =
+            i +
+            1;
+
+        slot.appendChild(
+            slotNumber
+        );
+
+        if (
+            type
+        ) {
+            const icon =
+                css(
+                    document.createElement(
+                        "div"
+                    ),
+
+                    {
+                        width:
+                            "34px",
+
+                        height:
+                            "34px",
+
+                        margin:
+                            "7px auto 2px",
+
+                        backgroundImage:
+                            `url(${itemIcon(type)})`,
+
+                        backgroundSize:
+                            "100% 100%",
+
+                        imageRendering:
+                            "pixelated"
+                    }
+                );
+
+            const label =
+                css(
+                    document.createElement(
+                        "div"
+                    ),
+
+                    {
+                        fontSize:
+                            "11px",
+
+                        overflow:
+                            "hidden",
+
+                        textOverflow:
+                            "ellipsis",
+
+                        whiteSpace:
+                            "nowrap"
+                    }
+                );
+
+            label.textContent =
+                `${nameOf(type)} x${INVENTORY[type]}`;
+
+            slot.append(
+                icon,
+                label
+            );
+        }
+
+        else {
+            const empty =
+                css(
+                    document.createElement(
+                        "span"
+                    ),
+
+                    {
+                        fontSize:
+                            "11px"
+                    }
+                );
+
+            empty.textContent =
+                "EMPTY";
+
+            slot.appendChild(
+                empty
+            );
+        }
+
+        slot.addEventListener(
+            "click",
+
+            () => {
+                selectedHotbar =
+                    i;
+
+                if (
+                    type
+                ) {
+                    storeHotbarItem(
+                        i
+                    );
+                }
+
+                else {
+                    updateHotbar();
+                    updateCraftingMenu();
+                }
+            }
+        );
+
+        hudGrid.appendChild(
+            slot
+        );
+    }
+
+    craftingPanel.appendChild(
+        hudGrid
     );
 
     const invTitle =
@@ -4405,10 +4852,13 @@ function updateCraftingMenu() {
             card.addEventListener(
                 "click",
 
-                () =>
+                () => {
                     assignHotbar(
                         type
-                    )
+                    );
+
+                    updateCraftingMenu();
+                }
             );
         }
 
@@ -5422,7 +5872,7 @@ function buildAnimalModel(
         part(
             {
                 x: 0.60,
-                y: 0.92,
+                y: 0.80,
                 z: 0.40
             },
 
@@ -5430,56 +5880,56 @@ function buildAnimalModel(
 
             {
                 x: 0,
-                y: 1.22,
+                y: 1.15,
                 z: 0
             }
         );
 
         part(
             {
-                x: 0.82,
-                y: 0.24,
-                z: 0.48
+                x: 0.46,
+                y: 0.46,
+                z: 0.42
             },
 
             0x27211e,
 
             {
                 x: 0,
-                y: 1.73,
-                z: -0.06
-            }
-        );
-
-        part(
-            {
-                x: 0.40,
-                y: 0.42,
-                z: 0.34
-            },
-
-            0x201b18,
-
-            {
-                x: 0,
-                y: 1.67,
-                z: 0.34
+                y: 1.78,
+                z: 0
             }
         );
 
         part(
             {
                 x: 0.30,
-                y: 0.20,
-                z: 0.12
+                y: 0.18,
+                z: 0.04
+            },
+
+            0x201b18,
+
+            {
+                x: 0,
+                y: 1.78,
+                z: 0.23
+            }
+        );
+
+        part(
+            {
+                x: 0.28,
+                y: 0.06,
+                z: 0.025
             },
 
             0x0d0b0a,
 
             {
                 x: 0,
-                y: 1.56,
-                z: 0.55
+                y: 1.68,
+                z: 0.255
             }
         );
 
@@ -5494,8 +5944,8 @@ function buildAnimalModel(
 
             {
                 x: -0.09,
-                y: 1.70,
-                z: 0.53
+                y: 1.85,
+                z: 0.235
             }
         );
 
@@ -5510,8 +5960,8 @@ function buildAnimalModel(
 
             {
                 x: 0.09,
-                y: 1.70,
-                z: 0.53
+                y: 1.85,
+                z: 0.235
             }
         );
 
@@ -6456,18 +6906,14 @@ function updateEntities(
         e.group.rotation.y =
             dir;
 
+        // Keep the redesigned mimic upright instead of leaning into the old
+        // hunched pose while it chases the player.
         if (
             e.type ===
             "mimic"
-            &&
-            mimicAggro
         ) {
             e.group.rotation.z =
-                Math.sin(
-                    performance.now() *
-                    0.012
-                ) *
-                0.035;
+                0;
         }
 
         transferEntityChunk(
