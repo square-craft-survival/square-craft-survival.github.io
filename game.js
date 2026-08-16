@@ -1,6 +1,10 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js";
 
-console.log("SQUARE CRAFT SURVIVAL - INFINITE WORLD + 7 SLOT HOTBAR + DISTINCT TEXTURES");
+console.log("SQUARE CRAFT SURVIVAL - INFINITE WORLD + CRAFTING");
+
+// =====================================================
+// HTML / UI
+// =====================================================
 
 const playButton = document.getElementById("playButton");
 const startScreen = document.getElementById("startScreen");
@@ -8,21 +12,36 @@ const gameContainer = document.getElementById("game");
 const hotbar = document.getElementById("hotbar");
 
 gameContainer.style.display = "none";
-
 hotbar.innerHTML = "";
 
 for (let i = 0; i < 7; i++) {
     const slot = document.createElement("div");
-
     slot.className = "slot";
-
     hotbar.appendChild(slot);
 }
 
-const hotbarSlots =
-    Array.from(
-        document.querySelectorAll(".slot")
-    );
+const hotbarSlots = Array.from(document.querySelectorAll(".slot"));
+
+const blockNameLabel = document.createElement("div");
+
+Object.assign(blockNameLabel.style, {
+    position: "fixed",
+    bottom: "95px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    color: "white",
+    fontSize: "22px",
+    fontWeight: "bold",
+    textShadow: "2px 2px 0 black",
+    pointerEvents: "none",
+    zIndex: "20"
+});
+
+gameContainer.appendChild(blockNameLabel);
+
+// =====================================================
+// GAME STATE
+// =====================================================
 
 let scene;
 let camera;
@@ -38,9 +57,9 @@ let pitch = 0;
 
 let verticalVelocity = 0;
 let onGround = false;
+let craftingOpen = false;
 
 const moveSpeed = 7;
-
 const gravity = 20;
 const jumpPower = 7.5;
 
@@ -56,23 +75,18 @@ const FOG_NEAR = 30;
 const FOG_FAR = 46;
 
 const bedrockY = -5;
-
 const maxBuildY = 48;
 
-const loadedChunks =
-    new Map();
+const loadedChunks = new Map();
+const chunkEdits = new Map();
+const interactiveMeshes = new Set();
 
-const chunkEdits =
-    new Map();
+let lastPlayerChunkX = null;
+let lastPlayerChunkZ = null;
 
-const interactiveMeshes =
-    new Set();
-
-let lastPlayerChunkX =
-    null;
-
-let lastPlayerChunkZ =
-    null;
+// =====================================================
+// BLOCK TYPES
+// =====================================================
 
 const allBlockTypes = [
     "grass",
@@ -80,15 +94,30 @@ const allBlockTypes = [
     "wood",
     "leaves",
     "stone",
+    "craftingWood",
     "bedrock"
 ];
+
+const placeableTypes = new Set([
+    "grass",
+    "dirt",
+    "wood",
+    "leaves",
+    "stone",
+    "craftingWood"
+]);
+
+// =====================================================
+// INVENTORY
+// =====================================================
 
 const inventory = {
     grass: 0,
     dirt: 0,
     wood: 0,
     leaves: 0,
-    stone: 0
+    stone: 0,
+    craftingWood: 0
 };
 
 const hotbarItems = [
@@ -101,11 +130,34 @@ const hotbarItems = [
     null
 ];
 
-let selectedHotbarIndex =
-    0;
+let selectedHotbarIndex = 0;
 
-const raycaster =
-    new THREE.Raycaster();
+// =====================================================
+// RECIPES
+// =====================================================
+
+const recipes = [
+    {
+        name: "Crafting Wood",
+
+        input: {
+            wood: 1
+        },
+
+        output: {
+            craftingWood: 5
+        },
+
+        description:
+            "1 Wood → 5 Crafting Wood"
+    }
+];
+
+// =====================================================
+// RAYCASTING
+// =====================================================
+
+const raycaster = new THREE.Raycaster();
 
 const screenCenter =
     new THREE.Vector2(
@@ -113,47 +165,43 @@ const screenCenter =
         0
     );
 
-raycaster.far =
-    6;
+raycaster.far = 6;
 
-const blockNameLabel =
-    document.createElement(
-        "div"
-    );
+// =====================================================
+// ITEM NAMES
+// =====================================================
 
-blockNameLabel.style.position =
-    "fixed";
+function itemName(type) {
 
-blockNameLabel.style.bottom =
-    "95px";
+    const names = {
+        grass:
+            "Grass",
 
-blockNameLabel.style.left =
-    "50%";
+        dirt:
+            "Dirt",
 
-blockNameLabel.style.transform =
-    "translateX(-50%)";
+        wood:
+            "Wood",
 
-blockNameLabel.style.color =
-    "white";
+        leaves:
+            "Leaves",
 
-blockNameLabel.style.fontSize =
-    "22px";
+        stone:
+            "Stone",
 
-blockNameLabel.style.fontWeight =
-    "bold";
+        craftingWood:
+            "Crafting Wood",
 
-blockNameLabel.style.textShadow =
-    "2px 2px 0 black";
+        bedrock:
+            "Bedrock"
+    };
 
-blockNameLabel.style.pointerEvents =
-    "none";
+    return names[type] || type;
+}
 
-blockNameLabel.style.zIndex =
-    "20";
-
-gameContainer.appendChild(
-    blockNameLabel
-);
+// =====================================================
+// KEYS
+// =====================================================
 
 function blockKey(
     x,
@@ -174,9 +222,7 @@ function chunkKey(
 
 }
 
-function worldToChunk(
-    value
-) {
+function worldToChunk(value) {
 
     return Math.floor(
         value /
@@ -208,6 +254,10 @@ function getChunkForWorld(
 
 }
 
+// =====================================================
+// RANDOM
+// =====================================================
+
 function coordinateRandom(
     x,
     z
@@ -227,6 +277,7 @@ function coordinateRandom(
 
         43758.5453;
 
+
     return (
 
         value -
@@ -238,6 +289,10 @@ function coordinateRandom(
     );
 
 }
+
+// =====================================================
+// TERRAIN HEIGHT
+// =====================================================
 
 function getTerrainHeight(
     x,
@@ -285,21 +340,6 @@ function getTerrainHeight(
         ) * 0.7;
 
 
-    const height =
-
-        Math.floor(
-
-            4 +
-
-            huge +
-
-            medium +
-
-            small
-
-        );
-
-
     return Math.max(
 
         0,
@@ -308,13 +348,27 @@ function getTerrainHeight(
 
             11,
 
-            height
+            Math.floor(
+
+                4 +
+
+                huge +
+
+                medium +
+
+                small
+
+            )
 
         )
 
     );
 
 }
+
+// =====================================================
+// TREE SPAWNING
+// =====================================================
 
 function canTreeSpawn(
     x,
@@ -412,6 +466,10 @@ function canTreeSpawn(
 
 }
 
+// =====================================================
+// TREE BLOCKS
+// =====================================================
+
 function getTreeBlocks(
     treeX,
     treeZ
@@ -455,6 +513,10 @@ function getTreeBlocks(
         [];
 
 
+    // =================================================
+    // TRUNK
+    // =================================================
+
     for (
         let y = 1;
         y <= trunkHeight;
@@ -487,6 +549,10 @@ function getTreeBlocks(
 
         trunkHeight;
 
+
+    // =================================================
+    // LOWER LEAVES
+    // =================================================
 
     for (
         let lx = -2;
@@ -557,6 +623,10 @@ function getTreeBlocks(
     }
 
 
+    // =================================================
+    // MIDDLE LEAVES
+    // =================================================
+
     for (
         let lx = -2;
         lx <= 2;
@@ -611,6 +681,10 @@ function getTreeBlocks(
 
     }
 
+
+    // =================================================
+    // TOP LEAVES
+    // =================================================
 
     for (
         let lx = -1;
@@ -670,6 +744,10 @@ function getTreeBlocks(
 
 }
 
+// =====================================================
+// WORLD EDITS
+// =====================================================
+
 function setWorldEdit(
     x,
     y,
@@ -677,22 +755,18 @@ function setWorldEdit(
     typeOrNull
 ) {
 
-    const cx =
-        worldToChunk(
-            x
-        );
-
-
-    const cz =
-        worldToChunk(
-            z
-        );
-
-
     const ck =
+
         chunkKey(
-            cx,
-            cz
+
+            worldToChunk(
+                x
+            ),
+
+            worldToChunk(
+                z
+            )
+
         );
 
 
@@ -730,6 +804,10 @@ function setWorldEdit(
         );
 
 }
+
+// =====================================================
+// GENERATE CHUNK
+// =====================================================
 
 function generateChunkBlocks(
     cx,
@@ -835,6 +913,10 @@ function generateChunkBlocks(
     }
 
 
+    // =================================================
+    // TERRAIN
+    // =================================================
+
     for (
         let x = minX;
         x <= maxX;
@@ -913,6 +995,10 @@ function generateChunkBlocks(
     }
 
 
+    // =================================================
+    // TREES
+    // =================================================
+
     for (
 
         let treeX =
@@ -941,16 +1027,12 @@ function generateChunkBlocks(
 
         ) {
 
-            const treeBlocks =
+            for (
+                const block of
                 getTreeBlocks(
                     treeX,
                     treeZ
-                );
-
-
-            for (
-                const block of
-                treeBlocks
+                )
             ) {
 
                 putBlock(
@@ -971,6 +1053,10 @@ function generateChunkBlocks(
 
     }
 
+
+    // =================================================
+    // PLAYER CHANGES
+    // =================================================
 
     const edits =
 
@@ -1057,6 +1143,30 @@ function generateChunkBlocks(
 
 }
 
+// =====================================================
+// TEXTURE HELPERS
+// =====================================================
+
+function makeCanvas() {
+
+    const canvas =
+        document.createElement(
+            "canvas"
+        );
+
+
+    canvas.width =
+        16;
+
+
+    canvas.height =
+        16;
+
+
+    return canvas;
+
+}
+
 function finishPixelTexture(
     canvas
 ) {
@@ -1083,25 +1193,9 @@ function finishPixelTexture(
 
 }
 
-function makeCanvas() {
-
-    const canvas =
-        document.createElement(
-            "canvas"
-        );
-
-
-    canvas.width =
-        16;
-
-
-    canvas.height =
-        16;
-
-
-    return canvas;
-
-}
+// =====================================================
+// GRASS TOP
+// =====================================================
 
 function createGrassTopTexture() {
 
@@ -1182,6 +1276,10 @@ function createGrassTopTexture() {
     );
 
 }
+
+// =====================================================
+// GRASS SIDE
+// =====================================================
 
 function createGrassSideTexture() {
 
@@ -1306,6 +1404,10 @@ function createGrassSideTexture() {
 
 }
 
+// =====================================================
+// DIRT
+// =====================================================
+
 function createDirtTexture() {
 
     const canvas =
@@ -1350,7 +1452,6 @@ function createDirtTexture() {
     ) {
 
         const x =
-
             (
                 i * 3 +
                 i * i * 2
@@ -1358,7 +1459,6 @@ function createDirtTexture() {
 
 
         const y =
-
             (
                 i * 7 +
                 5
@@ -1387,6 +1487,10 @@ function createDirtTexture() {
     );
 
 }
+
+// =====================================================
+// WOOD SIDE
+// =====================================================
 
 function createWoodSideTexture() {
 
@@ -1472,6 +1576,10 @@ function createWoodSideTexture() {
 
 }
 
+// =====================================================
+// WOOD TOP
+// =====================================================
+
 function createWoodTopTexture() {
 
     const canvas =
@@ -1532,31 +1640,15 @@ function createWoodTopTexture() {
     );
 
 
-    ctx.fillStyle =
-        "#b18358";
-
-
-    ctx.fillRect(
-        3,
-        3,
-        2,
-        1
-    );
-
-
-    ctx.fillRect(
-        10,
-        12,
-        2,
-        1
-    );
-
-
     return finishPixelTexture(
         canvas
     );
 
 }
+
+// =====================================================
+// LEAVES
+// =====================================================
 
 function createLeavesTexture() {
 
@@ -1602,7 +1694,6 @@ function createLeavesTexture() {
     ) {
 
         const x =
-
             (
                 i * 5 +
                 i * i
@@ -1610,7 +1701,6 @@ function createLeavesTexture() {
 
 
         const y =
-
             (
                 i * 9 +
                 2
@@ -1676,6 +1766,10 @@ function createLeavesTexture() {
 
 }
 
+// =====================================================
+// STONE
+// =====================================================
+
 function createStoneTexture() {
 
     const canvas =
@@ -1720,7 +1814,6 @@ function createStoneTexture() {
     ) {
 
         const x =
-
             (
                 i * 7 +
                 1
@@ -1728,7 +1821,6 @@ function createStoneTexture() {
 
 
         const y =
-
             (
                 i * 5 +
                 i * i
@@ -1736,11 +1828,8 @@ function createStoneTexture() {
 
 
         const size =
-
             i % 5 === 0
-
                 ? 2
-
                 : 1;
 
 
@@ -1766,6 +1855,130 @@ function createStoneTexture() {
     );
 
 }
+
+// =====================================================
+// CRAFTING WOOD
+// =====================================================
+
+function createCraftingWoodTexture() {
+
+    const canvas =
+        makeCanvas();
+
+
+    const ctx =
+        canvas.getContext(
+            "2d"
+        );
+
+
+    ctx.fillStyle =
+        "#a66f3f";
+
+
+    ctx.fillRect(
+        0,
+        0,
+        16,
+        16
+    );
+
+
+    // Horizontal boards
+
+    for (
+        let y = 0;
+        y < 16;
+        y += 4
+    ) {
+
+        ctx.fillStyle =
+            "#704521";
+
+
+        ctx.fillRect(
+            0,
+            y,
+            16,
+            1
+        );
+
+    }
+
+
+    ctx.fillStyle =
+        "#c58a50";
+
+
+    ctx.fillRect(
+        2,
+        1,
+        5,
+        1
+    );
+
+
+    ctx.fillRect(
+        9,
+        5,
+        4,
+        1
+    );
+
+
+    ctx.fillRect(
+        4,
+        9,
+        6,
+        1
+    );
+
+
+    ctx.fillRect(
+        11,
+        13,
+        3,
+        1
+    );
+
+
+    ctx.fillStyle =
+        "#81512c";
+
+
+    ctx.fillRect(
+        7,
+        2,
+        1,
+        2
+    );
+
+
+    ctx.fillRect(
+        3,
+        6,
+        1,
+        2
+    );
+
+
+    ctx.fillRect(
+        12,
+        10,
+        1,
+        2
+    );
+
+
+    return finishPixelTexture(
+        canvas
+    );
+
+}
+
+// =====================================================
+// BEDROCK
+// =====================================================
 
 function createBedrockTexture() {
 
@@ -1811,7 +2024,6 @@ function createBedrockTexture() {
     ) {
 
         const x =
-
             (
                 i * 11 +
                 i * i * 3
@@ -1819,7 +2031,6 @@ function createBedrockTexture() {
 
 
         const y =
-
             (
                 i * 7 +
                 4
@@ -1849,109 +2060,72 @@ function createBedrockTexture() {
 
 }
 
+// =====================================================
+// MATERIALS
+// =====================================================
+
 function createMaterials() {
-
-    const grassTopTexture =
-        createGrassTopTexture();
-
-
-    const grassSideTexture =
-        createGrassSideTexture();
-
-
-    const dirtTexture =
-        createDirtTexture();
-
-
-    const woodSideTexture =
-        createWoodSideTexture();
-
-
-    const woodTopTexture =
-        createWoodTopTexture();
-
-
-    const leavesTexture =
-        createLeavesTexture();
-
-
-    const stoneTexture =
-        createStoneTexture();
-
-
-    const bedrockTexture =
-        createBedrockTexture();
-
 
     const grassTop =
         new THREE.MeshLambertMaterial({
-
             map:
-                grassTopTexture
-
+                createGrassTopTexture()
         });
 
 
     const grassSide =
         new THREE.MeshLambertMaterial({
-
             map:
-                grassSideTexture
-
+                createGrassSideTexture()
         });
 
 
     const dirt =
         new THREE.MeshLambertMaterial({
-
             map:
-                dirtTexture
-
+                createDirtTexture()
         });
 
 
     const woodSide =
         new THREE.MeshLambertMaterial({
-
             map:
-                woodSideTexture
-
+                createWoodSideTexture()
         });
 
 
     const woodTop =
         new THREE.MeshLambertMaterial({
-
             map:
-                woodTopTexture
-
+                createWoodTopTexture()
         });
 
 
     const leaves =
         new THREE.MeshLambertMaterial({
-
             map:
-                leavesTexture
-
+                createLeavesTexture()
         });
 
 
     const stone =
         new THREE.MeshLambertMaterial({
-
             map:
-                stoneTexture
+                createStoneTexture()
+        });
 
+
+    const craftingWood =
+        new THREE.MeshLambertMaterial({
+            map:
+                createCraftingWoodTexture()
         });
 
 
     const bedrock =
         new THREE.MeshLambertMaterial({
-
             map:
-                bedrockTexture
-
+                createBedrockTexture()
         });
 
 
@@ -1973,7 +2147,9 @@ function createMaterials() {
 
         ],
 
+
         dirt,
+
 
         wood: [
 
@@ -1991,15 +2167,25 @@ function createMaterials() {
 
         ],
 
+
         leaves,
 
+
         stone,
+
+
+        craftingWood,
+
 
         bedrock
 
     };
 
 }
+
+// =====================================================
+// BLOCK TINT
+// =====================================================
 
 function getBlockTint(
     block
@@ -2038,6 +2224,10 @@ function getBlockTint(
     );
 
 }
+
+// =====================================================
+// CHUNK RENDERING
+// =====================================================
 
 function rebuildChunk(
     chunk
@@ -2229,6 +2419,10 @@ function rebuildChunk(
 
 }
 
+// =====================================================
+// LOAD CHUNK
+// =====================================================
+
 function loadChunk(
     cx,
     cz
@@ -2289,6 +2483,10 @@ function loadChunk(
 
 }
 
+// =====================================================
+// UNLOAD CHUNK
+// =====================================================
+
 function unloadChunk(
     key
 ) {
@@ -2330,6 +2528,10 @@ function unloadChunk(
     );
 
 }
+
+// =====================================================
+// REFRESH CHUNKS
+// =====================================================
 
 function refreshLoadedChunks(
     force = false
@@ -2389,34 +2591,22 @@ function refreshLoadedChunks(
         new Set();
 
 
+    const radius =
+        LOAD_DISTANCE +
+        0.35;
+
+
     for (
-
-        let dx =
-            -LOAD_DISTANCE;
-
-        dx <=
-            LOAD_DISTANCE;
-
+        let dx = -LOAD_DISTANCE;
+        dx <= LOAD_DISTANCE;
         dx++
-
     ) {
 
         for (
-
-            let dz =
-                -LOAD_DISTANCE;
-
-            dz <=
-                LOAD_DISTANCE;
-
+            let dz = -LOAD_DISTANCE;
+            dz <= LOAD_DISTANCE;
             dz++
-
         ) {
-
-            const radius =
-                LOAD_DISTANCE +
-                0.35;
-
 
             if (
 
@@ -2492,6 +2682,10 @@ function refreshLoadedChunks(
 
 }
 
+// =====================================================
+// BLOCK LOOKUP
+// =====================================================
+
 function getLoadedBlock(
     x,
     y,
@@ -2555,6 +2749,10 @@ function blockExists(
     );
 
 }
+
+// =====================================================
+// REMOVE BLOCK
+// =====================================================
 
 function removeLoadedBlock(
     x,
@@ -2630,6 +2828,10 @@ function removeLoadedBlock(
 
 }
 
+// =====================================================
+// ADD BLOCK
+// =====================================================
+
 function addLoadedBlock(
     x,
     y,
@@ -2637,22 +2839,17 @@ function addLoadedBlock(
     type
 ) {
 
-    const cx =
-        worldToChunk(
-            x
-        );
-
-
-    const cz =
-        worldToChunk(
-            z
-        );
-
-
     const chunk =
         loadChunk(
-            cx,
-            cz
+
+            worldToChunk(
+                x
+            ),
+
+            worldToChunk(
+                z
+            )
+
         );
 
 
@@ -2711,6 +2908,60 @@ function addLoadedBlock(
 
 }
 
+// =====================================================
+// HOTBAR ICONS
+// =====================================================
+
+function getIconBackground(
+    type
+) {
+
+    switch (
+        type
+    ) {
+
+        case "grass":
+
+            return "linear-gradient(to bottom, #4b9d38 0 28%, #6d472e 28% 100%)";
+
+
+        case "dirt":
+
+            return "repeating-linear-gradient(135deg, #70492f 0 4px, #85593a 4px 7px, #5c3a24 7px 10px)";
+
+
+        case "wood":
+
+            return "repeating-linear-gradient(90deg, #4f311d 0 3px, #684328 3px 6px, #7c5434 6px 8px)";
+
+
+        case "leaves":
+
+            return "repeating-linear-gradient(45deg, #245822 0 3px, #2e6d2c 3px 6px, #4a9141 6px 8px)";
+
+
+        case "stone":
+
+            return "repeating-linear-gradient(135deg, #555555 0 4px, #686868 4px 7px, #8c8c8c 7px 9px)";
+
+
+        case "craftingWood":
+
+            return "repeating-linear-gradient(0deg, #704521 0 2px, #a66f3f 2px 6px, #c58a50 6px 7px)";
+
+
+        default:
+
+            return "transparent";
+
+    }
+
+}
+
+// =====================================================
+// ADD INVENTORY ITEM
+// =====================================================
+
 function addItemToInventory(
     type,
     amount = 1
@@ -2734,7 +2985,8 @@ function addItemToInventory(
 
     inventory[
         type
-    ] += amount;
+    ] +=
+        amount;
 
 
     if (
@@ -2756,7 +3008,8 @@ function addItemToInventory(
 
             hotbarItems[
                 emptyIndex
-            ] = type;
+            ] =
+                type;
 
         }
 
@@ -2765,7 +3018,13 @@ function addItemToInventory(
 
     updateHotbar();
 
+    updateCraftingMenu();
+
 }
+
+// =====================================================
+// REMOVE INVENTORY ITEM
+// =====================================================
 
 function removeItemFromInventory(
     type,
@@ -2801,7 +3060,8 @@ function removeItemFromInventory(
 
     inventory[
         type
-    ] -= amount;
+    ] -=
+        amount;
 
 
     if (
@@ -2840,51 +3100,16 @@ function removeItemFromInventory(
 
     updateHotbar();
 
+    updateCraftingMenu();
+
 
     return true;
 
 }
 
-function getIconBackground(
-    type
-) {
-
-    switch (
-        type
-    ) {
-
-        case "grass":
-
-            return "linear-gradient(to bottom, #4b9d38 0 28%, #6d472e 28% 100%)";
-
-
-        case "dirt":
-
-            return "repeating-linear-gradient(135deg, #70492f 0 4px, #85593a 4px 7px, #5c3a24 7px 10px)";
-
-
-        case "wood":
-
-            return "repeating-linear-gradient(90deg, #4f311d 0 3px, #684328 3px 6px, #7c5434 6px 8px)";
-
-
-        case "leaves":
-
-            return "repeating-linear-gradient(45deg, #245822 0 3px, #2e6d2c 3px 6px, #4a9141 6px 8px)";
-
-
-        case "stone":
-
-            return "repeating-linear-gradient(135deg, #555555 0 4px, #686868 4px 7px, #8c8c8c 7px 9px)";
-
-
-        default:
-
-            return "transparent";
-
-    }
-
-}
+// =====================================================
+// UPDATE HOTBAR
+// =====================================================
 
 function updateHotbar() {
 
@@ -2920,29 +3145,35 @@ function updateHotbar() {
             "";
 
 
-        slot.style.position =
-            "relative";
+        Object.assign(
+            slot.style,
+            {
+
+                position:
+                    "relative",
+
+                display:
+                    "flex",
+
+                alignItems:
+                    "center",
+
+                justifyContent:
+                    "center",
+
+                overflow:
+                    "hidden",
+
+                boxSizing:
+                    "border-box"
+
+            }
+        );
 
 
-        slot.style.display =
-            "flex";
-
-
-        slot.style.alignItems =
-            "center";
-
-
-        slot.style.justifyContent =
-            "center";
-
-
-        slot.style.overflow =
-            "hidden";
-
-
-        slot.style.boxSizing =
-            "border-box";
-
+        // =================================================
+        // SLOT NUMBER
+        // =================================================
 
         const number =
             document.createElement(
@@ -2954,32 +3185,33 @@ function updateHotbar() {
             i + 1;
 
 
-        number.style.position =
-            "absolute";
+        Object.assign(
+            number.style,
+            {
 
+                position:
+                    "absolute",
 
-        number.style.top =
-            "3px";
+                top:
+                    "3px",
 
+                left:
+                    "5px",
 
-        number.style.left =
-            "5px";
+                fontSize:
+                    "12px",
 
+                color:
+                    "white",
 
-        number.style.fontSize =
-            "12px";
+                textShadow:
+                    "1px 1px 0 #000",
 
+                zIndex:
+                    "3"
 
-        number.style.color =
-            "white";
-
-
-        number.style.textShadow =
-            "1px 1px 0 #000";
-
-
-        number.style.zIndex =
-            "3";
+            }
+        );
 
 
         slot.appendChild(
@@ -3001,42 +3233,52 @@ function updateHotbar() {
         }
 
 
+        // =================================================
+        // ICON
+        // =================================================
+
         const icon =
             document.createElement(
                 "div"
             );
 
 
-        icon.style.width =
-            "30px";
+        Object.assign(
+            icon.style,
+            {
 
+                width:
+                    "30px",
 
-        icon.style.height =
-            "30px";
+                height:
+                    "30px",
 
+                border:
+                    "2px solid rgba(0,0,0,0.5)",
 
-        icon.style.border =
-            "2px solid rgba(0,0,0,0.5)";
+                boxSizing:
+                    "border-box",
 
+                background:
+                    getIconBackground(
+                        type
+                    ),
 
-        icon.style.boxSizing =
-            "border-box";
+                boxShadow:
+                    "inset 2px 2px 0 rgba(255,255,255,0.12), inset -2px -2px 0 rgba(0,0,0,0.28)"
 
-
-        icon.style.background =
-            getIconBackground(
-                type
-            );
-
-
-        icon.style.boxShadow =
-            "inset 2px 2px 0 rgba(255,255,255,0.12), inset -2px -2px 0 rgba(0,0,0,0.28)";
+            }
+        );
 
 
         slot.appendChild(
             icon
         );
 
+
+        // =================================================
+        // COUNT
+        // =================================================
 
         const count =
             document.createElement(
@@ -3050,36 +3292,36 @@ function updateHotbar() {
             ];
 
 
-        count.style.position =
-            "absolute";
+        Object.assign(
+            count.style,
+            {
 
+                position:
+                    "absolute",
 
-        count.style.right =
-            "4px";
+                right:
+                    "4px",
 
+                bottom:
+                    "2px",
 
-        count.style.bottom =
-            "2px";
+                fontSize:
+                    "14px",
 
+                fontWeight:
+                    "bold",
 
-        count.style.fontSize =
-            "14px";
+                color:
+                    "white",
 
+                textShadow:
+                    "1px 1px 0 #000",
 
-        count.style.fontWeight =
-            "bold";
+                zIndex:
+                    "3"
 
-
-        count.style.color =
-            "white";
-
-
-        count.style.textShadow =
-            "1px 1px 0 #000";
-
-
-        count.style.zIndex =
-            "3";
+            }
+        );
 
 
         slot.appendChild(
@@ -3089,36 +3331,882 @@ function updateHotbar() {
 
         slot.title =
 
-            `${type}: ${inventory[type]}`;
+            `${itemName(type)}: ${inventory[type]}`;
 
     }
 
 
     const selectedType =
+
         hotbarItems[
             selectedHotbarIndex
         ];
 
 
-    if (
+    blockNameLabel.textContent =
+
         selectedType ===
         null
+
+            ? "EMPTY"
+
+            : `${itemName(selectedType).toUpperCase()} x${inventory[selectedType]}`;
+
+}
+
+// =====================================================
+// CRAFTING OVERLAY
+// =====================================================
+
+const craftingOverlay =
+    document.createElement(
+        "div"
+    );
+
+
+Object.assign(
+    craftingOverlay.style,
+    {
+
+        display:
+            "none",
+
+        position:
+            "fixed",
+
+        inset:
+            "0",
+
+        background:
+            "rgba(0, 0, 0, 0.62)",
+
+        zIndex:
+            "1000",
+
+        alignItems:
+            "center",
+
+        justifyContent:
+            "center",
+
+        fontFamily:
+            "inherit"
+
+    }
+);
+
+
+document.body.appendChild(
+    craftingOverlay
+);
+
+
+// =====================================================
+// CRAFTING PANEL
+// =====================================================
+
+const craftingPanel =
+    document.createElement(
+        "div"
+    );
+
+
+Object.assign(
+    craftingPanel.style,
+    {
+
+        width:
+            "min(720px, 88vw)",
+
+        maxHeight:
+            "80vh",
+
+        overflowY:
+            "auto",
+
+        background:
+            "#252525",
+
+        border:
+            "5px solid #111",
+
+        boxShadow:
+            "inset 3px 3px 0 #555, inset -3px -3px 0 #080808, 0 10px 30px rgba(0,0,0,0.55)",
+
+        color:
+            "white",
+
+        padding:
+            "24px",
+
+        boxSizing:
+            "border-box"
+
+    }
+);
+
+
+craftingOverlay.appendChild(
+    craftingPanel
+);
+
+// =====================================================
+// CAN CRAFT?
+// =====================================================
+
+function canCraft(
+    recipe
+) {
+
+    for (
+        const [
+            type,
+            amount
+        ]
+        of Object.entries(
+            recipe.input
+        )
     ) {
 
-        blockNameLabel.textContent =
-            "EMPTY";
+        if (
+            (
+                inventory[
+                    type
+                ]
+                || 0
+            )
+            <
+            amount
+        ) {
+
+            return false;
+
+        }
 
     }
 
-    else {
 
-        blockNameLabel.textContent =
+    return true;
 
-            `${selectedType.toUpperCase()} x${inventory[selectedType]}`;
+}
+
+// =====================================================
+// CRAFT RECIPE
+// =====================================================
+
+function craftRecipe(
+    recipe
+) {
+
+    if (
+        !canCraft(
+            recipe
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    // =================================================
+    // REMOVE MATERIALS
+    // =================================================
+
+    for (
+        const [
+            type,
+            amount
+        ]
+        of Object.entries(
+            recipe.input
+        )
+    ) {
+
+        inventory[
+            type
+        ] -=
+            amount;
+
+
+        if (
+            inventory[
+                type
+            ] < 0
+        ) {
+
+            inventory[
+                type
+            ] = 0;
+
+        }
+
+    }
+
+
+    // =================================================
+    // ADD OUTPUT
+    // =================================================
+
+    for (
+        const [
+            type,
+            amount
+        ]
+        of Object.entries(
+            recipe.output
+        )
+    ) {
+
+        inventory[
+            type
+        ] =
+
+            (
+                inventory[
+                    type
+                ]
+                || 0
+            )
+
+            +
+
+            amount;
+
+    }
+
+
+    // =================================================
+    // REMOVE ZERO ITEMS FROM HOTBAR
+    // =================================================
+
+    for (
+        let i = 0;
+        i < hotbarItems.length;
+        i++
+    ) {
+
+        const type =
+            hotbarItems[
+                i
+            ];
+
+
+        if (
+            type
+            &&
+            inventory[
+                type
+            ] <= 0
+        ) {
+
+            hotbarItems[
+                i
+            ] = null;
+
+        }
+
+    }
+
+
+    // =================================================
+    // ADD CRAFTED ITEMS TO HOTBAR
+    // =================================================
+
+    for (
+        const type of
+        Object.keys(
+            recipe.output
+        )
+    ) {
+
+        if (
+            !hotbarItems.includes(
+                type
+            )
+        ) {
+
+            const emptyIndex =
+                hotbarItems.indexOf(
+                    null
+                );
+
+
+            if (
+                emptyIndex !==
+                -1
+            ) {
+
+                hotbarItems[
+                    emptyIndex
+                ] =
+                    type;
+
+            }
+
+        }
+
+    }
+
+
+    updateHotbar();
+
+    updateCraftingMenu();
+
+}
+
+// =====================================================
+// UPDATE CRAFTING MENU
+// =====================================================
+
+function updateCraftingMenu() {
+
+    craftingPanel.innerHTML =
+        "";
+
+
+    // =================================================
+    // TITLE
+    // =================================================
+
+    const title =
+        document.createElement(
+            "div"
+        );
+
+
+    title.textContent =
+        "INVENTORY / CRAFTING";
+
+
+    Object.assign(
+        title.style,
+        {
+
+            fontSize:
+                "32px",
+
+            fontWeight:
+                "bold",
+
+            textAlign:
+                "center",
+
+            marginBottom:
+                "8px",
+
+            textShadow:
+                "3px 3px 0 #000"
+
+        }
+    );
+
+
+    craftingPanel.appendChild(
+        title
+    );
+
+
+    const hint =
+        document.createElement(
+            "div"
+        );
+
+
+    hint.textContent =
+        "Press E to close";
+
+
+    Object.assign(
+        hint.style,
+        {
+
+            textAlign:
+                "center",
+
+            color:
+                "#bdbdbd",
+
+            marginBottom:
+                "22px",
+
+            fontSize:
+                "15px"
+
+        }
+    );
+
+
+    craftingPanel.appendChild(
+        hint
+    );
+
+
+    // =================================================
+    // INVENTORY TITLE
+    // =================================================
+
+    const inventoryTitle =
+        document.createElement(
+            "div"
+        );
+
+
+    inventoryTitle.textContent =
+        "INVENTORY";
+
+
+    Object.assign(
+        inventoryTitle.style,
+        {
+
+            fontSize:
+                "21px",
+
+            marginBottom:
+                "10px"
+
+        }
+    );
+
+
+    craftingPanel.appendChild(
+        inventoryTitle
+    );
+
+
+    // =================================================
+    // INVENTORY GRID
+    // =================================================
+
+    const inventoryGrid =
+        document.createElement(
+            "div"
+        );
+
+
+    Object.assign(
+        inventoryGrid.style,
+        {
+
+            display:
+                "grid",
+
+            gridTemplateColumns:
+                "repeat(auto-fit, minmax(130px, 1fr))",
+
+            gap:
+                "8px",
+
+            marginBottom:
+                "26px"
+
+        }
+    );
+
+
+    for (
+        const [
+            type,
+            amount
+        ]
+        of Object.entries(
+            inventory
+        )
+    ) {
+
+        const card =
+            document.createElement(
+                "div"
+            );
+
+
+        Object.assign(
+            card.style,
+            {
+
+                display:
+                    "flex",
+
+                alignItems:
+                    "center",
+
+                gap:
+                    "9px",
+
+                background:
+                    "#333",
+
+                border:
+                    "3px solid #151515",
+
+                padding:
+                    "8px"
+
+            }
+        );
+
+
+        const icon =
+            document.createElement(
+                "div"
+            );
+
+
+        Object.assign(
+            icon.style,
+            {
+
+                width:
+                    "34px",
+
+                height:
+                    "34px",
+
+                flex:
+                    "0 0 34px",
+
+                background:
+                    getIconBackground(
+                        type
+                    ),
+
+                border:
+                    "2px solid #111",
+
+                boxSizing:
+                    "border-box"
+
+            }
+        );
+
+
+        const label =
+            document.createElement(
+                "div"
+            );
+
+
+        label.textContent =
+
+            `${itemName(type)} x${amount}`;
+
+
+        label.style.fontSize =
+            "15px";
+
+
+        card.appendChild(
+            icon
+        );
+
+
+        card.appendChild(
+            label
+        );
+
+
+        inventoryGrid.appendChild(
+            card
+        );
+
+    }
+
+
+    craftingPanel.appendChild(
+        inventoryGrid
+    );
+
+
+    // =================================================
+    // CRAFTING TITLE
+    // =================================================
+
+    const recipesTitle =
+        document.createElement(
+            "div"
+        );
+
+
+    recipesTitle.textContent =
+        "CRAFTING";
+
+
+    Object.assign(
+        recipesTitle.style,
+        {
+
+            fontSize:
+                "21px",
+
+            marginBottom:
+                "10px"
+
+        }
+    );
+
+
+    craftingPanel.appendChild(
+        recipesTitle
+    );
+
+
+    // =================================================
+    // RECIPES
+    // =================================================
+
+    for (
+        const recipe of
+        recipes
+    ) {
+
+        const row =
+            document.createElement(
+                "div"
+            );
+
+
+        Object.assign(
+            row.style,
+            {
+
+                display:
+                    "flex",
+
+                alignItems:
+                    "center",
+
+                justifyContent:
+                    "space-between",
+
+                gap:
+                    "18px",
+
+                background:
+                    "#333",
+
+                border:
+                    "3px solid #151515",
+
+                padding:
+                    "14px",
+
+                marginBottom:
+                    "10px"
+
+            }
+        );
+
+
+        const info =
+            document.createElement(
+                "div"
+            );
+
+
+        const recipeName =
+            document.createElement(
+                "div"
+            );
+
+
+        recipeName.textContent =
+            recipe.name.toUpperCase();
+
+
+        Object.assign(
+            recipeName.style,
+            {
+
+                fontSize:
+                    "20px",
+
+                fontWeight:
+                    "bold",
+
+                marginBottom:
+                    "4px"
+
+            }
+        );
+
+
+        const recipeDescription =
+            document.createElement(
+                "div"
+            );
+
+
+        recipeDescription.textContent =
+            recipe.description;
+
+
+        recipeDescription.style.color =
+            "#cfcfcf";
+
+
+        info.appendChild(
+            recipeName
+        );
+
+
+        info.appendChild(
+            recipeDescription
+        );
+
+
+        const button =
+            document.createElement(
+                "button"
+            );
+
+
+        const available =
+            canCraft(
+                recipe
+            );
+
+
+        button.textContent =
+            available
+
+                ? "CRAFT"
+
+                : "NEED WOOD";
+
+
+        button.disabled =
+            !available;
+
+
+        Object.assign(
+            button.style,
+            {
+
+                minWidth:
+                    "130px",
+
+                padding:
+                    "12px 16px",
+
+                font:
+                    "inherit",
+
+                fontWeight:
+                    "bold",
+
+                fontSize:
+                    "17px",
+
+                color:
+                    button.disabled
+                        ? "#888"
+                        : "white",
+
+                background:
+                    button.disabled
+                        ? "#3d3d3d"
+                        : "#666",
+
+                border:
+                    "4px solid #111",
+
+                cursor:
+                    button.disabled
+                        ? "not-allowed"
+                        : "pointer"
+
+            }
+        );
+
+
+        button.addEventListener(
+            "click",
+            () => {
+
+                craftRecipe(
+                    recipe
+                );
+
+            }
+        );
+
+
+        row.appendChild(
+            info
+        );
+
+
+        row.appendChild(
+            button
+        );
+
+
+        craftingPanel.appendChild(
+            row
+        );
 
     }
 
 }
+
+// =====================================================
+// OPEN / CLOSE CRAFTING
+// =====================================================
+
+function setCraftingOpen(
+    open
+) {
+
+    craftingOpen =
+        open;
+
+
+    craftingOverlay.style.display =
+
+        open
+
+            ? "flex"
+
+            : "none";
+
+
+    for (
+        const key of
+        Object.keys(
+            keys
+        )
+    ) {
+
+        keys[
+            key
+        ] = false;
+
+    }
+
+
+    if (
+        open
+    ) {
+
+        if (
+            document.pointerLockElement
+        ) {
+
+            document.exitPointerLock();
+
+        }
+
+
+        updateCraftingMenu();
+
+    }
+
+}
+
+// =====================================================
+// COLLISION
+// =====================================================
 
 function playerCollides(
     testX,
@@ -3127,166 +4215,107 @@ function playerCollides(
 ) {
 
     const feetY =
-
         testY -
-
         eyeHeight;
 
 
     const playerMinX =
-
         testX -
-
         playerRadius;
 
 
     const playerMaxX =
-
         testX +
-
         playerRadius;
 
 
     const playerMinZ =
-
         testZ -
-
         playerRadius;
 
 
     const playerMaxZ =
-
         testZ +
-
         playerRadius;
 
 
     const playerMinY =
-
         feetY +
-
         0.06;
 
 
     const playerMaxY =
-
         feetY +
-
         playerHeight -
-
         0.05;
 
 
     const minBlockX =
-
         Math.ceil(
-
             playerMinX -
-
             0.5
-
         );
 
 
     const maxBlockX =
-
         Math.floor(
-
             playerMaxX +
-
             0.5
-
         );
 
 
     const minBlockY =
-
         Math.ceil(
-
             playerMinY -
-
             0.5
-
         );
 
 
     const maxBlockY =
-
         Math.floor(
-
             playerMaxY +
-
             0.5
-
         );
 
 
     const minBlockZ =
-
         Math.ceil(
-
             playerMinZ -
-
             0.5
-
         );
 
 
     const maxBlockZ =
-
         Math.floor(
-
             playerMaxZ +
-
             0.5
-
         );
 
 
     for (
-
-        let x =
-            minBlockX;
-
-        x <=
-            maxBlockX;
-
+        let x = minBlockX;
+        x <= maxBlockX;
         x++
-
     ) {
 
         for (
-
-            let y =
-                minBlockY;
-
-            y <=
-                maxBlockY;
-
+            let y = minBlockY;
+            y <= maxBlockY;
             y++
-
         ) {
 
             for (
-
-                let z =
-                    minBlockZ;
-
-                z <=
-                    maxBlockZ;
-
+                let z = minBlockZ;
+                z <= maxBlockZ;
                 z++
-
             ) {
 
                 if (
-
                     !blockExists(
                         x,
                         y,
                         z
                     )
-
                 ) {
 
                     continue;
@@ -3356,6 +4385,10 @@ function playerCollides(
 
 }
 
+// =====================================================
+// PLACING VS PLAYER
+// =====================================================
+
 function blockWouldHitPlayer(
     x,
     y,
@@ -3363,53 +4396,38 @@ function blockWouldHitPlayer(
 ) {
 
     const feetY =
-
         camera.position.y -
-
         eyeHeight;
 
 
     const minX =
-
         camera.position.x -
-
         playerRadius;
 
 
     const maxX =
-
         camera.position.x +
-
         playerRadius;
 
 
     const minY =
-
         feetY +
-
         0.06;
 
 
     const maxY =
-
         feetY +
-
         playerHeight -
-
         0.05;
 
 
     const minZ =
-
         camera.position.z -
-
         playerRadius;
 
 
     const maxZ =
-
         camera.position.z +
-
         playerRadius;
 
 
@@ -3447,14 +4465,17 @@ function blockWouldHitPlayer(
 
 }
 
+// =====================================================
+// HORIZONTAL MOVEMENT
+// =====================================================
+
 function moveHorizontalAxis(
     axis,
     amount
 ) {
 
     if (
-        amount ===
-        0
+        amount === 0
     ) {
 
         return;
@@ -3463,7 +4484,6 @@ function moveHorizontalAxis(
 
 
     const steps =
-
         Math.ceil(
 
             Math.abs(
@@ -3478,9 +4498,7 @@ function moveHorizontalAxis(
 
 
     const step =
-
         amount /
-
         steps;
 
 
@@ -3499,8 +4517,7 @@ function moveHorizontalAxis(
 
 
         if (
-            axis ===
-            "x"
+            axis === "x"
         ) {
 
             testX +=
@@ -3510,8 +4527,7 @@ function moveHorizontalAxis(
 
 
         if (
-            axis ===
-            "z"
+            axis === "z"
         ) {
 
             testZ +=
@@ -3599,13 +4615,16 @@ function moveHorizontalAxis(
 
 }
 
+// =====================================================
+// VERTICAL MOVEMENT
+// =====================================================
+
 function moveVertical(
     amount
 ) {
 
     if (
-        amount ===
-        0
+        amount === 0
     ) {
 
         return;
@@ -3614,7 +4633,6 @@ function moveVertical(
 
 
     const steps =
-
         Math.ceil(
 
             Math.abs(
@@ -3629,9 +4647,7 @@ function moveVertical(
 
 
     const step =
-
         amount /
-
         steps;
 
 
@@ -3642,9 +4658,7 @@ function moveVertical(
     ) {
 
         const testY =
-
             camera.position.y +
-
             step;
 
 
@@ -3687,6 +4701,10 @@ function moveVertical(
     }
 
 }
+
+// =====================================================
+// TARGET BLOCK
+// =====================================================
 
 function getTargetBlock() {
 
@@ -3760,7 +4778,20 @@ function getTargetBlock() {
 
 }
 
+// =====================================================
+// BREAK BLOCK
+// =====================================================
+
 function breakTargetBlock() {
+
+    if (
+        craftingOpen
+    ) {
+
+        return;
+
+    }
+
 
     const target =
         getTargetBlock();
@@ -3817,7 +4848,20 @@ function breakTargetBlock() {
 
 }
 
+// =====================================================
+// PLACE BLOCK
+// =====================================================
+
 function placeTargetBlock() {
+
+    if (
+        craftingOpen
+    ) {
+
+        return;
+
+    }
+
 
     const target =
         getTargetBlock();
@@ -3848,6 +4892,17 @@ function placeTargetBlock() {
     if (
         type ===
         null
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        !placeableTypes.has(
+            type
+        )
     ) {
 
         return;
@@ -3980,9 +5035,22 @@ function placeTargetBlock() {
 
 }
 
+// =====================================================
+// MOVEMENT
+// =====================================================
+
 function updateMovement(
     delta
 ) {
+
+    if (
+        craftingOpen
+    ) {
+
+        return;
+
+    }
+
 
     const forward =
 
@@ -4149,6 +5217,10 @@ function updateMovement(
 
 }
 
+// =====================================================
+// RESPAWN
+// =====================================================
+
 function respawnPlayer() {
 
     const spawnX =
@@ -4197,6 +5269,10 @@ function respawnPlayer() {
 
 }
 
+// =====================================================
+// CONTROLS
+// =====================================================
+
 function setupControls() {
 
     renderer.domElement.addEventListener(
@@ -4206,6 +5282,10 @@ function setupControls() {
         () => {
 
             if (
+
+                !craftingOpen
+
+                &&
 
                 document.pointerLockElement !==
                 renderer.domElement
@@ -4235,6 +5315,10 @@ function setupControls() {
     );
 
 
+    // =================================================
+    // MOUSE LOOK
+    // =================================================
+
     document.addEventListener(
 
         "mousemove",
@@ -4242,6 +5326,10 @@ function setupControls() {
         event => {
 
             if (
+
+                craftingOpen
+
+                ||
 
                 document.pointerLockElement !==
                 renderer.domElement
@@ -4307,16 +5395,61 @@ function setupControls() {
     );
 
 
+    // =================================================
+    // KEYBOARD
+    // =================================================
+
     document.addEventListener(
 
         "keydown",
 
         event => {
 
+            // =================================================
+            // E = INVENTORY / CRAFTING
+            // =================================================
+
+            if (
+
+                event.code ===
+                "KeyE"
+
+                &&
+
+                !event.repeat
+
+            ) {
+
+                event.preventDefault();
+
+
+                setCraftingOpen(
+                    !craftingOpen
+                );
+
+
+                return;
+
+            }
+
+
+            if (
+                craftingOpen
+            ) {
+
+                return;
+
+            }
+
+
             keys[
                 event.code
             ] = true;
 
+
+            // =================================================
+            // JUMP
+            // =================================================
 
             if (
                 event.code ===
@@ -4341,6 +5474,10 @@ function setupControls() {
 
             }
 
+
+            // =================================================
+            // HOTBAR 1-7
+            // =================================================
 
             if (
 
@@ -4404,6 +5541,10 @@ function setupControls() {
     );
 
 
+    // =================================================
+    // BREAK / PLACE
+    // =================================================
+
     renderer.domElement.addEventListener(
 
         "mousedown",
@@ -4411,6 +5552,10 @@ function setupControls() {
         event => {
 
             if (
+
+                craftingOpen
+
+                ||
 
                 document.pointerLockElement !==
                 renderer.domElement
@@ -4446,6 +5591,10 @@ function setupControls() {
     );
 
 
+    // =================================================
+    // MOUSE WHEEL
+    // =================================================
+
     renderer.domElement.addEventListener(
 
         "wheel",
@@ -4453,6 +5602,10 @@ function setupControls() {
         event => {
 
             if (
+
+                craftingOpen
+
+                ||
 
                 document.pointerLockElement !==
                 renderer.domElement
@@ -4513,6 +5666,10 @@ function setupControls() {
 
 }
 
+// =====================================================
+// PLAY
+// =====================================================
+
 playButton.addEventListener(
 
     "click",
@@ -4532,6 +5689,10 @@ playButton.addEventListener(
     }
 
 );
+
+// =====================================================
+// START GAME
+// =====================================================
 
 function startGame() {
 
@@ -4561,6 +5722,10 @@ function startGame() {
         );
 
 
+    // =================================================
+    // CAMERA
+    // =================================================
+
     camera =
 
         new THREE.PerspectiveCamera(
@@ -4581,6 +5746,10 @@ function startGame() {
     camera.rotation.order =
         "YXZ";
 
+
+    // =================================================
+    // RENDERER
+    // =================================================
 
     renderer =
 
@@ -4620,6 +5789,10 @@ function startGame() {
 
     );
 
+
+    // =================================================
+    // LIGHTING
+    // =================================================
 
     const sunlight =
 
@@ -4661,6 +5834,10 @@ function startGame() {
     );
 
 
+    // =================================================
+    // BLOCKS
+    // =================================================
+
     createMaterials();
 
 
@@ -4677,11 +5854,22 @@ function startGame() {
         );
 
 
+    // =================================================
+    // CONTROLS
+    // =================================================
+
     setupControls();
 
 
     updateHotbar();
 
+
+    updateCraftingMenu();
+
+
+    // =================================================
+    // SPAWN
+    // =================================================
 
     const spawnX =
         0;
@@ -4728,6 +5916,10 @@ function startGame() {
 
 }
 
+// =====================================================
+// GAME LOOP
+// =====================================================
+
 function animate() {
 
     requestAnimationFrame(
@@ -4760,6 +5952,10 @@ function animate() {
     );
 
 }
+
+// =====================================================
+// WINDOW RESIZE
+// =====================================================
 
 window.addEventListener(
 
