@@ -7922,7 +7922,7 @@ function setPaused(
         firstPersonRig.visible = !paused;
     }
 
-    handHud.style.display = paused ? "none" : "block";
+    handHud.style.display = "none";
 }
 
 function resumeFromPause() {
@@ -12741,14 +12741,7 @@ function clearHeldItem() {
 function buildHeldItem(type) {
     heldItemKey = type || null;
 
-    handHudItem.style.display = type ? "block" : "none";
-    handHudItem.style.backgroundImage = type ? `url(${itemIcon(type)})` : "none";
-    handHudItem.title = type ? nameOf(type) : "";
-
-    // The old world-space item mesh made a huge perspective wedge on narrow
-    // screens.  The HUD icon is crisp, matches the hotbar exactly, and is
-    // always the same friendly size.
-    return;
+    handHudItem.style.display = "none";
 
     clearHeldItem();
 
@@ -12876,11 +12869,30 @@ function buildHeldItem(type) {
 }
 
 function createFirstPersonRig() {
-    // Keep these small state groups for the hand animation code, but do not
-    // attach them to the camera.  The visual hand is the stable HUD above.
+    // A deliberately tiny Minecraft-style 3D arm.  It sits farther from the
+    // camera than the old test arm, so perspective cannot turn it into a huge
+    // blue wedge on the screen.
     firstPersonRig = new THREE.Group();
+    firstPersonRig.position.set(0.60, -0.56, -1.68);
+    firstPersonRig.rotation.set(0.04, -0.10, -0.18);
+
     firstPersonArm = new THREE.Group();
+    firstPersonRig.add(firstPersonArm);
+
+    // Sleeve, wrist, and a compact square palm: simple on purpose, with no
+    // extra fingers or flat HUD shapes that can look like a foot.
+    firstPersonBox(firstPersonArm, [0.16, 0.38, 0.16], [0.02, 0.13, 0.05], 0x3571a5, [0.08, 0, -0.10]);
+    firstPersonBox(firstPersonArm, [0.15, 0.18, 0.15], [0, -0.14, -0.01], 0xe0a070, [0.08, 0, -0.10]);
+    firstPersonBox(firstPersonArm, [0.19, 0.10, 0.18], [-0.02, -0.27, -0.07], 0xedb081, [0.08, 0, -0.10]);
+
     heldItemRig = new THREE.Group();
+    heldItemRig.position.set(-0.18, -0.18, -0.18);
+    heldItemRig.rotation.set(0.12, -0.25, 0.10);
+    firstPersonArm.add(heldItemRig);
+
+    camera.add(firstPersonRig);
+    scene.add(camera);
+    handHud.style.display = "none";
     buildHeldItem(selectedItem());
 }
 
@@ -12902,16 +12914,16 @@ function updateFirstPersonRig(delta) {
     handBobTime += delta;
 
     const moving = onGround && (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD);
-    const bob = moving ? Math.sin(handBobTime * 10) * 2 : 0;
+    const bob = moving ? Math.sin(handBobTime * 9) * 0.008 : 0;
     const swing = Math.sin((1 - handSwing) * Math.PI) * handSwing;
     const visible = !gameOver && !craftingOpen && !tradingOpen && !paused;
 
     firstPersonRig.visible = visible;
-    handHud.style.display = visible ? "block" : "none";
-    // The hand stays anchored like a real first-person arm. Mining moves it
-    // only a couple of pixels forward; it never spins like a loading icon.
-    handHud.style.transform = `translateY(${Math.round(bob + swing * 2)}px)`;
-    handHudItem.style.transform = `translateY(${-swing}px) rotate(-8deg)`;
+    handHud.style.display = "none";
+    firstPersonRig.position.set(0.60, -0.56 + bob, -1.68 + swing * 0.035);
+    firstPersonRig.rotation.set(0.04 + swing * 0.07, -0.10, -0.18);
+    firstPersonArm.rotation.set(0, 0, -0.03 - swing * 0.04);
+    heldItemRig.rotation.set(0.12 - swing * 0.06, -0.25, 0.10);
 }
 
 // ============================================================
