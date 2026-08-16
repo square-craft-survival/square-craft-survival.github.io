@@ -60,6 +60,33 @@ const itemLabel = css(document.createElement("div"), {
 
 gameContainer.appendChild(itemLabel);
 
+const lootToast = css(document.createElement("div"), {
+    position: "fixed",
+    left: "50%",
+    top: "108px",
+    transform: "translateX(-50%)",
+    display: "none",
+    padding: "9px 14px",
+    color: "#ffe8a4",
+    background: "rgba(34, 23, 12, .88)",
+    border: "2px solid #c7913f",
+    fontWeight: "bold",
+    textShadow: "1px 1px #000",
+    zIndex: "80",
+    pointerEvents: "none"
+});
+
+gameContainer.appendChild(lootToast);
+
+let lootToastTimer = 0;
+
+function showLootToast(text) {
+    lootToast.textContent = text;
+    lootToast.style.display = "block";
+    clearTimeout(lootToastTimer);
+    lootToastTimer = setTimeout(() => lootToast.style.display = "none", 2800);
+}
+
 const miningBar = css(document.createElement("div"), {
     position: "fixed",
     left: "50%",
@@ -143,6 +170,7 @@ function makeMeter(name, filled, empty) {
 
 const healthMeter = makeMeter("HEALTH", "#b92e2e", "#3a2020");
 const hungerMeter = makeMeter("HUNGER", "#c8872d", "#3d2d1c");
+const armorMeter = makeMeter("ARMOR", "#b9d1e6", "#283440");
 const airMeter = makeMeter("AIR", "#5abcf5", "#19384d");
 
 airMeter.row.style.display =
@@ -225,6 +253,59 @@ gameOverPanel.append(gameOverTitle, gameOverText, respawnButton);
 gameOverOverlay.appendChild(gameOverPanel);
 document.body.appendChild(gameOverOverlay);
 
+const pauseOverlay = css(document.createElement("div"), {
+    position: "fixed",
+    inset: "0",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(0, 0, 0, .60)",
+    zIndex: "1100",
+    color: "white",
+    fontFamily: "system-ui, sans-serif",
+    textAlign: "center"
+});
+
+const pausePanel = css(document.createElement("div"), {
+    width: "min(390px, 82vw)",
+    padding: "30px",
+    background: "#1b2028",
+    border: "5px solid #5d7187",
+    boxShadow: "0 16px 50px rgba(0,0,0,.65)"
+});
+
+const pauseTitle = css(document.createElement("div"), {
+    fontSize: "40px",
+    fontWeight: "900",
+    letterSpacing: "2px",
+    color: "#e6f1ff",
+    textShadow: "3px 3px #000"
+});
+
+pauseTitle.textContent = "PAUSED";
+
+const pauseText = css(document.createElement("div"), {
+    margin: "12px 0 24px",
+    color: "#c8d4e2",
+    fontSize: "16px"
+});
+
+pauseText.textContent = "Press Esc or resume when you are ready.";
+
+const resumeButton = css(document.createElement("button"), {
+    padding: "13px 30px",
+    color: "white",
+    background: "#397052",
+    border: "4px solid #102116",
+    font: "bold 18px system-ui, sans-serif",
+    cursor: "pointer"
+});
+
+resumeButton.textContent = "RESUME";
+pausePanel.append(pauseTitle, pauseText, resumeButton);
+pauseOverlay.appendChild(pausePanel);
+document.body.appendChild(pauseOverlay);
+
 // ============================================================
 // GAME STATE
 // ============================================================
@@ -249,6 +330,7 @@ let verticalVelocity = 0;
 let onGround = false;
 let craftingOpen = false;
 let gameOver = false;
+let paused = false;
 
 const MOVE_SPEED = 7;
 const GRAVITY = 20;
@@ -260,6 +342,7 @@ const PLAYER_RADIUS = 0.32;
 
 let health = 20;
 let hunger = 20;
+let equippedArmor = null;
 
 const MAX_HEALTH = 20;
 const MAX_HUNGER = 20;
@@ -323,6 +406,7 @@ const BLOCKS = [
     "blackwoodLeaves",
     "stone",
     "craftingWood",
+    "lootChest",
     "coalOre",
     "ironOre",
     "goldOre",
@@ -384,6 +468,13 @@ const INVENTORY = {
 
     ironAxe: 0,
     ironPickaxe: 0,
+
+    woodSword: 0,
+    stoneSword: 0,
+    ironSword: 0,
+
+    woodArmor: 0,
+    ironArmor: 0,
 
     beef: 0,
     pork: 0,
@@ -518,6 +609,65 @@ const RECIPES = [
             ironPickaxe: 1
         },
         text: "3 Iron + 2 Sticks"
+    },
+
+    {
+        name: "Wood Sword",
+        input: {
+            craftingWood: 2,
+            sticks: 1
+        },
+        output: {
+            woodSword: 1
+        },
+        text: "2 Crafting Wood + 1 Stick"
+    },
+
+    {
+        name: "Stone Sword",
+        input: {
+            stone: 2,
+            sticks: 1
+        },
+        output: {
+            stoneSword: 1
+        },
+        text: "2 Stone + 1 Stick"
+    },
+
+    {
+        name: "Iron Sword",
+        input: {
+            iron: 2,
+            sticks: 1
+        },
+        output: {
+            ironSword: 1
+        },
+        text: "2 Iron + 1 Stick"
+    },
+
+    {
+        name: "Wood Armor",
+        input: {
+            craftingWood: 12,
+            sticks: 4
+        },
+        output: {
+            woodArmor: 1
+        },
+        text: "12 Crafting Wood + 4 Sticks"
+    },
+
+    {
+        name: "Iron Armor",
+        input: {
+            iron: 12
+        },
+        output: {
+            ironArmor: 1
+        },
+        text: "12 Iron"
     }
 ];
 
@@ -560,6 +710,13 @@ const NAMES = {
     ironAxe: "Iron Axe",
     ironPickaxe: "Iron Pickaxe",
 
+    woodSword: "Wood Sword",
+    stoneSword: "Stone Sword",
+    ironSword: "Iron Sword",
+
+    woodArmor: "Wood Armor",
+    ironArmor: "Iron Armor",
+
     sticks: "Sticks",
 
     beef: "Beef",
@@ -584,6 +741,35 @@ const isPickaxe = item =>
         "stonePickaxe",
         "ironPickaxe"
     ].includes(item);
+
+const isSword = item =>
+    [
+        "woodSword",
+        "stoneSword",
+        "ironSword"
+    ].includes(item);
+
+const swordDamage = item =>
+    item === "ironSword"
+        ? 6
+        : item === "stoneSword"
+            ? 4.5
+            : item === "woodSword"
+                ? 3
+                : 1;
+
+const isArmor = item =>
+    [
+        "woodArmor",
+        "ironArmor"
+    ].includes(item);
+
+const armorProtection = () =>
+    equippedArmor === "ironArmor"
+        ? 0.5
+        : equippedArmor === "woodArmor"
+            ? 0.25
+            : 0;
 
 const pickTier = item =>
     item === "ironPickaxe"
@@ -988,62 +1174,9 @@ function waterSurfaceAt(
     x,
     z
 ) {
-    const blockX = Math.round(x);
-    const blockZ = Math.round(z);
-
-    const floorY =
-        terrainHeight(
-            blockX,
-            blockZ
-        );
-
-    if (
-        !swampPoolAt(
-            blockX,
-            blockZ
-        )
-        ||
-        nearCaveEntrance(
-            blockX,
-            blockZ
-        )
-        ||
-        // A puddle is exactly one block deep. Allowing it over much lower
-        // land exposed the cave walls below and made fake ocean trenches.
-        floorY !==
-        SWAMP_WATER_Y -
-        1
-    ) {
-        return null;
-    }
-
-    // Do not paint water across a ledge or cave opening. Every nearby tile
-    // must have the same shallow floor and solid space directly under water.
-    for (let dx = -1; dx <= 1; dx++) {
-        for (let dz = -1; dz <= 1; dz++) {
-            const checkX = blockX + dx;
-            const checkZ = blockZ + dz;
-
-            if (
-                terrainHeight(
-                    checkX,
-                    checkZ
-                ) !==
-                floorY
-                ||
-                insideEntrance(
-                    checkX,
-                    SWAMP_WATER_Y,
-                    checkZ
-                )
-            ) {
-                return null;
-            }
-        }
-    }
-
-    // Water uses a flat plane positioned half a block above its stored Y.
-    return SWAMP_WATER_Y + 0.5;
+    // Water is disabled everywhere: swamps are dry, and the player can no
+    // longer swim or find blue puddles/tiny oceans.
+    return null;
 }
 
 function swampPoolAt(
@@ -2058,11 +2191,11 @@ function structureBlocks(
             });
 
     if (type === "well") {
-        // A compact stone well, with the water contained in its center.
+        // A dry stone well: no water is generated anywhere in the world.
         for (let x = -2; x <= 2; x++) {
             for (let z = -2; z <= 2; z++) {
                 const rim = Math.abs(x) === 2 || Math.abs(z) === 2;
-                add(ox + x, g + 1, oz + z, rim ? "stone" : "water");
+                add(ox + x, g + 1, oz + z, rim ? "stone" : "gravel");
             }
         }
 
@@ -2103,6 +2236,7 @@ function structureBlocks(
         }
 
         add(ox, g + 2, oz, "goldOre");
+        add(ox, g + 2, oz - 1, "lootChest");
         return out;
     }
 
@@ -2216,6 +2350,18 @@ function structureBlocks(
                 );
             }
         }
+
+        // Kept inside the hut so the player can actually find it.
+        add(
+            ox,
+
+            g +
+            2,
+
+            oz,
+
+            "lootChest"
+        );
     }
 
     else {
@@ -2314,6 +2460,18 @@ function structureBlocks(
             oz,
 
             "goldOre"
+        );
+
+        add(
+            ox,
+
+            g +
+            2,
+
+            oz +
+            1,
+
+            "lootChest"
         );
     }
 
@@ -2581,23 +2739,7 @@ function generateChunkBlocks(
         }
     }
 
-    // Swamp water is generated as broad, shallow pools only in low ground.
-    // It stays out of regular forests and never becomes a checkerboard ocean.
-    for (let x = minX; x <= maxX; x++) {
-        for (let z = minZ; z <= maxZ; z++) {
-            if (
-                waterSurfaceAt(x, z) !== null
-            ) {
-                put(
-                    x,
-                    SWAMP_WATER_Y,
-                    z,
-                    "water",
-                    true
-                );
-            }
-        }
-    }
+    // Swamps stay dry so terrain generation never creates puddles or oceans.
 
     // Put a solid stone floor under every carved tunnel step. Scan nearby
     // entrance chunks too so stairs stay seamless across a chunk edge.
@@ -3125,6 +3267,38 @@ function craftingWoodTexture() {
     );
 }
 
+function lootChestTexture() {
+    const c =
+        makeCanvas();
+
+    const x =
+        c.getContext(
+            "2d"
+        );
+
+    x.fillStyle =
+        "#77451f";
+    x.fillRect(0, 0, 16, 16);
+
+    x.fillStyle =
+        "#b77735";
+    x.fillRect(1, 2, 14, 5);
+    x.fillRect(1, 9, 14, 6);
+
+    x.fillStyle =
+        "#3e2412";
+    x.fillRect(0, 7, 16, 2);
+    x.fillRect(7, 7, 2, 5);
+
+    x.fillStyle =
+        "#f0c851";
+    x.fillRect(7, 8, 2, 2);
+
+    return finishTexture(
+        c
+    );
+}
+
 function oreTexture(
     colorA,
     colorB
@@ -3494,6 +3668,12 @@ function createMaterials() {
         new THREE.MeshLambertMaterial({
             map:
                 craftingWoodTexture()
+        });
+
+    materials.lootChest =
+        new THREE.MeshLambertMaterial({
+            map:
+                lootChestTexture()
         });
 
     materials.coalOre =
@@ -4591,6 +4771,64 @@ function itemIcon(
         type
             .toLowerCase()
             .includes(
+                "sword"
+            )
+    ) {
+        const tier =
+            type.startsWith(
+                "wood"
+            )
+                ? "#9a6a40"
+                : type.startsWith(
+                    "stone"
+                )
+                    ? "#888"
+                    : "#d8e0e8";
+
+        x.fillStyle =
+            "#6c4428";
+        x.fillRect(7, 10, 2, 5);
+
+        x.fillStyle =
+            "#d9b35d";
+        x.fillRect(5, 10, 6, 2);
+
+        x.fillStyle =
+            tier;
+        x.fillRect(7, 2, 2, 8);
+        x.fillRect(6, 3, 4, 5);
+        x.fillRect(5, 5, 6, 2);
+    }
+
+    else if (
+        type
+            .toLowerCase()
+            .includes(
+                "armor"
+            )
+    ) {
+        const plate =
+            type.startsWith(
+                "iron"
+            )
+                ? "#c7d4df"
+                : "#a87a4c";
+
+        x.fillStyle =
+            plate;
+        x.fillRect(4, 3, 8, 10);
+        x.fillRect(2, 5, 2, 6);
+        x.fillRect(12, 5, 2, 6);
+        x.fillStyle =
+            "rgba(0,0,0,.28)";
+        x.fillRect(6, 4, 1, 8);
+        x.fillRect(10, 4, 1, 8);
+    }
+
+    else if (
+        type
+            .toLowerCase()
+            .includes(
                 "axe"
             )
     ) {
@@ -4809,6 +5047,57 @@ function addItem(
 
     updateHotbar();
     updateCraftingMenu();
+}
+
+function openLootChest(block) {
+    const removed =
+        removeBlock(
+            block.x,
+            block.y,
+            block.z
+        );
+
+    if (
+        !removed
+        ||
+        removed.type !== "lootChest"
+    ) {
+        return false;
+    }
+
+    // The result is tied to the chest position, so reopening the world gives
+    // the same treasure instead of rerolling it.
+    const roll =
+        hash3(
+            block.x,
+            block.y,
+            block.z,
+            6241
+        );
+
+    const loot =
+        roll < 0.12
+            ? [["ironArmor", 1], ["iron", 2]]
+            : roll < 0.28
+                ? [["ironSword", 1], ["iron", 3]]
+                : roll < 0.50
+                    ? [["stoneSword", 1], ["gold", 2]]
+                    : roll < 0.75
+                        ? [["iron", 3], ["coal", 5]]
+                        : [["woodArmor", 1], ["craftingWood", 5], ["sticks", 3]];
+
+    for (const [type, amount] of loot) {
+        addItem(
+            type,
+            amount
+        );
+    }
+
+    showLootToast(
+        `CHEST: ${loot.map(([type, amount]) => `${amount} ${nameOf(type)}`).join(" + ")}`
+    );
+
+    return true;
 }
 
 function removeItem(
@@ -5918,6 +6207,12 @@ function updateSurvivalHud() {
     );
 
     paint(
+        armorMeter,
+        armorProtection() *
+        20
+    );
+
+    paint(
         airMeter,
         air *
         2
@@ -5928,6 +6223,11 @@ function updateSurvivalHud() {
 
     hungerMeter.label.textContent =
         `HUNGER ${hunger}`;
+
+    armorMeter.label.textContent =
+        equippedArmor
+            ? `ARMOR ${nameOf(equippedArmor).toUpperCase()}`
+            : "ARMOR NONE";
 
     airMeter.label.textContent =
         `AIR ${Math.ceil(air)}`;
@@ -5959,6 +6259,11 @@ function showGameOver(
 
     miningHeld =
         false;
+
+    for (const code of Object.keys(keys)) {
+        keys[code] =
+            false;
+    }
 
     resetMining();
 
@@ -6009,13 +6314,80 @@ respawnButton.addEventListener(
     respawnFromGameOver
 );
 
+function setPaused(
+    shouldPause
+) {
+    if (
+        !started
+        ||
+        gameOver
+    ) {
+        return;
+    }
+
+    paused =
+        shouldPause;
+
+    miningHeld =
+        false;
+
+    for (const code of Object.keys(keys)) {
+        keys[code] =
+            false;
+    }
+
+    resetMining();
+
+    if (
+        paused
+    ) {
+        craftingOpen =
+            false;
+
+        craftingOverlay.style.display =
+            "none";
+
+        if (
+            document.pointerLockElement
+        ) {
+            document.exitPointerLock();
+        }
+    }
+
+    pauseOverlay.style.display =
+        paused
+            ? "flex"
+            : "none";
+}
+
+function resumeFromPause() {
+    setPaused(
+        false
+    );
+}
+
+resumeButton.addEventListener(
+    "click",
+    resumeFromPause
+);
+
 function takeDamage(
     amount
 ) {
+    const reducedAmount =
+        Math.max(
+            0.5,
+            amount *
+            (
+                1 -
+                armorProtection()
+            )
+        );
+
     health =
         clamp(
             health -
-            amount,
+            reducedAmount,
 
             0,
             MAX_HEALTH
@@ -6408,6 +6780,50 @@ function eatSelectedFood() {
             hunger +
             FOOD[t]
         );
+
+    updateSurvivalHud();
+
+    return true;
+}
+
+function equipSelectedArmor() {
+    const type =
+        selectedItem();
+
+    if (
+        !isArmor(
+            type
+        )
+        ||
+        INVENTORY[type] <=
+        0
+    ) {
+        return false;
+    }
+
+    const previousArmor =
+        equippedArmor;
+
+    if (
+        !removeItem(
+            type,
+            1
+        )
+    ) {
+        return false;
+    }
+
+    equippedArmor =
+        type;
+
+    if (
+        previousArmor
+    ) {
+        addItem(
+            previousArmor,
+            1
+        );
+    }
 
     updateSurvivalHud();
 
@@ -7361,7 +7777,7 @@ function buildAnimalModel(
     }
 
     // ========================================================
-    // RAKE — pale, lanky cave hunter
+    // SKINWALKER — a ragged, antlered night hunter (still uses the old "rake" spawn id).
     // ========================================================
     else if (
         type ===
@@ -7369,12 +7785,12 @@ function buildAnimalModel(
     ) {
         part(
             {
-                x: 0.48,
-                y: 1.02,
-                z: 0.28
+                x: 0.56,
+                y: 1.06,
+                z: 0.36
             },
 
-            0xd7d4c9,
+            0x403127,
 
             {
                 x: 0,
@@ -7383,7 +7799,7 @@ function buildAnimalModel(
             }
         );
 
-        // Broad shoulders stop the silhouette from looking like a fence post.
+        // A wide, ragged silhouette reads much more like a Skinwalker than a stick figure.
         part(
             {
                 x: 0.76,
@@ -7391,7 +7807,7 @@ function buildAnimalModel(
                 z: 0.30
             },
 
-            0xc4c1b7,
+            0x30231d,
 
             {
                 x: 0,
@@ -7407,7 +7823,7 @@ function buildAnimalModel(
                 z: 0.34
             },
 
-            0xe6e2d7,
+            0xbdb291,
 
             {
                 x: 0.04,
@@ -7417,6 +7833,59 @@ function buildAnimalModel(
             }
         );
 
+        // A pronounced muzzle, pointed ears, and small antlers sell the animal-skull head.
+        part(
+            {
+                x: 0.30,
+                y: 0.22,
+                z: 0.30
+            },
+
+            0x9d9277,
+
+            {
+                x: 0,
+                y: 2.00,
+                z: 0.31
+            }
+        );
+
+        for (const earX of [-0.28, 0.28]) {
+            part(
+                {
+                    x: 0.16,
+                    y: 0.24,
+                    z: 0.10
+                },
+
+                0x554231,
+
+                {
+                    x: earX,
+                    y: 2.38,
+                    z: 0.01,
+                    rotation: { z: earX < 0 ? 0.52 : -0.52 }
+                }
+            );
+
+            part(
+                {
+                    x: 0.055,
+                    y: 0.34,
+                    z: 0.055
+                },
+
+                0x4a3420,
+
+                {
+                    x: earX * 0.70,
+                    y: 2.56,
+                    z: 0.01,
+                    rotation: { z: earX < 0 ? -0.22 : 0.22 }
+                }
+            );
+        }
+
         part(
             {
                 x: 0.035,
@@ -7424,7 +7893,7 @@ function buildAnimalModel(
                 z: 0.025
             },
 
-            0x121212,
+            0xff4d2e,
 
             {
                 x: -0.09,
@@ -7440,7 +7909,7 @@ function buildAnimalModel(
                 z: 0.025
             },
 
-            0x121212,
+            0xff4d2e,
 
             {
                 x: 0.09,
@@ -7456,7 +7925,7 @@ function buildAnimalModel(
                 z: 0.10
             },
 
-            0xb9b6ac,
+            0x4a382c,
 
             {
                 x: -0.43,
@@ -7472,7 +7941,7 @@ function buildAnimalModel(
                 z: 0.10
             },
 
-            0xb9b6ac,
+            0x4a382c,
 
             {
                 x: 0.43,
@@ -7488,7 +7957,7 @@ function buildAnimalModel(
                 z: 0.14
             },
 
-            0xdedbd1,
+            0x5a4437,
 
             {
                 x: -0.43,
@@ -7497,7 +7966,7 @@ function buildAnimalModel(
             }
         );
 
-        // Three skinny fingers on each hand give it a proper Rake silhouette.
+        // Long black claws make its hands read as animal-like rather than human.
         for (const handX of [-0.43, 0.43]) {
             for (const fingerZ of [-0.05, 0, 0.05]) {
                 part(
@@ -7507,7 +7976,7 @@ function buildAnimalModel(
                         z: 0.025
                     },
 
-                    0x929087,
+                    0x201714,
 
                     {
                         x: handX,
@@ -7525,7 +7994,7 @@ function buildAnimalModel(
                 z: 0.14
             },
 
-            0xdedbd1,
+            0x5a4437,
 
             {
                 x: 0.43,
@@ -7541,7 +8010,7 @@ function buildAnimalModel(
                 z: 0.12
             },
 
-            0xc7c3ba,
+            0x392a23,
 
             {
                 x: -0.15,
@@ -7557,7 +8026,7 @@ function buildAnimalModel(
                 z: 0.12
             },
 
-            0xc7c3ba,
+            0x392a23,
 
             {
                 x: 0.15,
@@ -8520,7 +8989,15 @@ function attackEntity(
         selectedItem();
 
     const damage =
-        isAxe(
+        isSword(
+            tool
+        )
+
+            ? swordDamage(
+                tool
+            )
+
+            : isAxe(
             tool
         )
 
@@ -9898,6 +10375,19 @@ function updateMining(
         return;
     }
 
+    if (
+        bt.block.type ===
+        "lootChest"
+    ) {
+        openLootChest(
+            bt.block
+        );
+
+        resetMining();
+
+        return;
+    }
+
     const k =
         key3(
             bt.block.x,
@@ -10078,6 +10568,8 @@ function setupControls() {
 
         () => {
             if (
+                !paused
+                &&
                 !craftingOpen
                 &&
                 document.pointerLockElement !==
@@ -10117,6 +10609,8 @@ function setupControls() {
 
         e => {
             if (
+                paused
+                ||
                 craftingOpen
                 ||
                 document.pointerLockElement !==
@@ -10156,6 +10650,35 @@ function setupControls() {
         "keydown",
 
         e => {
+            if (
+                e.code ===
+                "Escape"
+                &&
+                !e.repeat
+            ) {
+                e.preventDefault();
+
+                if (
+                    paused
+                ) {
+                    resumeFromPause();
+                }
+
+                else {
+                    setPaused(
+                        true
+                    );
+                }
+
+                return;
+            }
+
+            if (
+                paused
+            ) {
+                return;
+            }
+
             if (
                 e.code ===
                 "KeyE"
@@ -10244,6 +10767,8 @@ function setupControls() {
 
         e => {
             if (
+                paused
+                ||
                 craftingOpen
                 ||
                 document.pointerLockElement !==
@@ -10294,7 +10819,23 @@ function setupControls() {
                 e.button ===
                 2
             ) {
+                const blockTarget =
+                    targetBlock();
+
                 if (
+                    blockTarget?.block.type ===
+                    "lootChest"
+                ) {
+                    openLootChest(
+                        blockTarget.block
+                    );
+
+                    return;
+                }
+
+                if (
+                    !equipSelectedArmor()
+                    &&
                     !eatSelectedFood()
                 ) {
                     placeBlock();
@@ -10324,6 +10865,8 @@ function setupControls() {
 
         e => {
             if (
+                paused
+                ||
                 craftingOpen
                 ||
                 document.pointerLockElement !==
@@ -10541,6 +11084,19 @@ function animate() {
             clock.getDelta(),
             0.05
         );
+
+    // Keep drawing the frozen scene behind the menu, but stop the world:
+    // no player movement, mining, chunks, mobs, hunger, or time can advance.
+    if (
+        paused
+    ) {
+        renderer.render(
+            scene,
+            camera
+        );
+
+        return;
+    }
 
     // Generate at most one queued chunk between frames. This keeps startup and
     // long-distance movement responsive instead of blocking on the full radius.
