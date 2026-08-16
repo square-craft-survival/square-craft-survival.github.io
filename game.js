@@ -319,6 +319,12 @@ let doorGeometry;
 let openDoorGeometry;
 let torchGeometry;
 let chestGeometry;
+let firstPersonRig;
+let firstPersonArm;
+let heldItemRig;
+let heldItemKey = null;
+let handSwing = 0;
+let handBobTime = 0;
 
 let sunLight;
 let ambientLight;
@@ -8238,6 +8244,7 @@ function fireRangedWeapon() {
     }
 
     attackCooldown = stats.cooldown;
+    swingPlayerHand(1.15);
     const target = targetEntityAtRange(stats.range);
 
     if (!target) {
@@ -10704,6 +10711,8 @@ function attackEntity(
     attackCooldown =
         0.28;
 
+    swingPlayerHand(1);
+
     const tool =
         selectedItem();
 
@@ -11898,6 +11907,7 @@ function respawnPlayer() {
 let miningHeld = false;
 let miningTarget = null;
 let miningProgress = 0;
+let miningSwingCooldown = 0;
 
 function targetBlock() {
     raycaster.setFromCamera(
@@ -11951,6 +11961,8 @@ function resetMining() {
 
     miningProgress =
         0;
+
+    miningSwingCooldown = 0;
 
     miningFill.style.width =
         "0%";
@@ -12229,6 +12241,12 @@ function updateMining(
     miningProgress +=
         delta;
 
+    miningSwingCooldown -= delta;
+    if (miningSwingCooldown <= 0) {
+        swingPlayerHand(0.92);
+        miningSwingCooldown = 0.32;
+    }
+
     miningBar.style.display =
         "block";
 
@@ -12368,6 +12386,7 @@ function placeBlock() {
                 addBlock(x, y + 1, z, "doorTop")
             ) {
                 removeItem(t, 1);
+                swingPlayerHand(0.9);
             }
 
             else {
@@ -12413,7 +12432,257 @@ function placeBlock() {
             t,
             1
         );
+        swingPlayerHand(0.9);
     }
+}
+
+// ============================================================
+// FIRST-PERSON HAND / HELD ITEM
+// ============================================================
+function firstPersonMaterial(color) {
+    return new THREE.MeshBasicMaterial({
+        color,
+        depthTest: false,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false
+    });
+}
+
+function firstPersonBox(parent, size, position, color, rotation = [0, 0, 0]) {
+    const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(size[0], size[1], size[2]),
+        firstPersonMaterial(color)
+    );
+
+    mesh.position.set(position[0], position[1], position[2]);
+    mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+    mesh.renderOrder = 999;
+    mesh.frustumCulled = false;
+    parent.add(mesh);
+    return mesh;
+}
+
+function heldBlockColors(type) {
+    const colors = {
+        grass: 0x63a947,
+        dirt: 0x76482d,
+        sand: 0xd9c174,
+        gravel: 0x777d7e,
+        clay: 0xb56c59,
+        sandstone: 0xc1a260,
+        brick: 0xa84c3b,
+        wood: 0x824d2a,
+        leaves: 0x397d35,
+        redwoodWood: 0xa44a30,
+        redwoodLeaves: 0x3b593d,
+        blackwoodWood: 0x332743,
+        blackwoodLeaves: 0x202b40,
+        stone: 0x737b80,
+        craftingWood: 0xb77743,
+        furnace: 0x596166,
+        door: 0x9f5e30,
+        torch: 0xc7772f,
+        coal: 0x24292d,
+        rawIron: 0x955f4d,
+        iron: 0xb9c7cc,
+        rawGold: 0x9a792f,
+        gold: 0xe8bd35,
+        diamond: 0x2ed3ce,
+        crystal: 0x8d5bdb
+    };
+
+    return colors[type] || 0xa1a1a1;
+}
+
+function clearHeldItem() {
+    if (!heldItemRig) {
+        return;
+    }
+
+    while (heldItemRig.children.length) {
+        heldItemRig.remove(heldItemRig.children[0]);
+    }
+}
+
+function buildHeldItem(type) {
+    clearHeldItem();
+    heldItemKey = type || null;
+
+    if (!type || !heldItemRig) {
+        return;
+    }
+
+    const add = (size, pos, color, rot) =>
+        firstPersonBox(heldItemRig, size, pos, color, rot);
+
+    const tier = type.startsWith("diamond")
+        ? 0x31d4ce
+        : type.startsWith("iron")
+            ? 0xc9d7dc
+            : type.startsWith("stone")
+                ? 0x868d91
+                : 0xa86a39;
+
+    const blockItems = new Set([
+        "grass", "dirt", "sand", "gravel", "clay", "sandstone", "brick",
+        "wood", "leaves", "redwoodWood", "redwoodLeaves", "blackwoodWood",
+        "blackwoodLeaves", "stone", "craftingWood", "furnace", "coal",
+        "rawIron", "iron", "rawGold", "gold", "diamond", "crystal"
+    ]);
+
+    if (blockItems.has(type)) {
+        add([0.31, 0.31, 0.31], [0, 0, 0], heldBlockColors(type), [0.20, -0.28, 0.08]);
+        return;
+    }
+
+    if (type === "door") {
+        add([0.13, 0.48, 0.32], [0, 0.02, 0], 0x9f5e30, [0.13, -0.26, 0.05]);
+        add([0.02, 0.48, 0.33], [0.01, 0.02, 0.01], 0x4d2918, [0.13, -0.26, 0.05]);
+        return;
+    }
+
+    if (type === "torch") {
+        add([0.06, 0.36, 0.06], [0, 0, 0], 0x87451f, [0.10, 0.12, 0.12]);
+        add([0.15, 0.14, 0.13], [0, 0.20, 0], 0xffa02c, [0, 0, 0]);
+        add([0.07, 0.10, 0.14], [-0.01, 0.24, -0.01], 0xfff2a4, [0, 0, 0]);
+        return;
+    }
+
+    if (type.endsWith("Axe")) {
+        add([0.06, 0.43, 0.07], [-0.03, -0.02, 0], 0x875029, [0.04, 0.16, 0.12]);
+        add([0.28, 0.12, 0.09], [0.06, 0.18, 0], tier, [0.05, 0.15, -0.18]);
+        return;
+    }
+
+    if (type.endsWith("Pickaxe")) {
+        add([0.06, 0.44, 0.07], [0, -0.03, 0], 0x875029, [0.05, 0.08, 0]);
+        add([0.38, 0.07, 0.09], [0, 0.19, 0], tier, [0.04, 0.06, 0]);
+        return;
+    }
+
+    if (type.endsWith("Sword")) {
+        add([0.07, 0.16, 0.08], [0, -0.10, 0], 0x875029, [0, 0, 0]);
+        add([0.27, 0.05, 0.08], [0, 0.01, 0], 0xe0b85b, [0, 0, 0]);
+        add([0.09, 0.45, 0.06], [0, 0.25, 0], tier, [0.04, 0.08, 0]);
+        return;
+    }
+
+    if (type.endsWith("Armor")) {
+        const plate = type.startsWith("diamond") ? 0x31d4ce
+            : type.startsWith("gold") ? 0xe8bd35
+                : type.startsWith("iron") ? 0xc9d7dc
+                    : type.startsWith("stone") ? 0x868d91
+                        : 0xa86a39;
+        add([0.30, 0.29, 0.10], [0, 0, 0], plate, [0.15, -0.22, 0.08]);
+        add([0.09, 0.18, 0.11], [-0.18, -0.01, 0], plate, [0.15, -0.22, 0.08]);
+        add([0.09, 0.18, 0.11], [0.18, -0.01, 0], plate, [0.15, -0.22, 0.08]);
+        return;
+    }
+
+    if (type === "shield") {
+        add([0.31, 0.42, 0.08], [0, 0, 0], 0x87491f, [0.08, -0.18, 0.07]);
+        add([0.07, 0.30, 0.10], [0, 0, -0.05], 0xcbd6d8, [0.08, -0.18, 0.07]);
+        return;
+    }
+
+    if (type === "bow") {
+        add([0.055, 0.53, 0.05], [-0.12, 0, 0], 0x9f6230, [0, 0, -0.16]);
+        add([0.055, 0.53, 0.05], [0.12, 0, 0], 0x9f6230, [0, 0, 0.16]);
+        add([0.018, 0.52, 0.02], [0, 0, -0.02], 0xf2ead9, [0, 0, 0]);
+        return;
+    }
+
+    if (type === "arrow") {
+        add([0.045, 0.44, 0.045], [0, 0, 0], 0xc0854b, [0.12, 0.05, 0.05]);
+        add([0.15, 0.10, 0.05], [0, 0.22, 0], 0xd9e7e8, [0.12, 0.05, 0.05]);
+        return;
+    }
+
+    if (type === "flintlockPistol" || type === "flintlockRifle") {
+        const rifle = type === "flintlockRifle";
+        add([rifle ? 0.55 : 0.34, 0.07, 0.07], [0.08, 0.08, 0], 0xa8b3b7, [0.02, 0.06, 0]);
+        add([rifle ? 0.33 : 0.22, 0.12, 0.10], [-0.02, -0.02, 0], 0x78411f, [0.02, 0.06, 0]);
+        add([0.08, 0.19, 0.08], [rifle ? -0.12 : -0.04, -0.13, 0], 0x4d2917, [0.02, 0.06, -0.20]);
+        return;
+    }
+
+    if (type === "musketBall") {
+        const ball = new THREE.Mesh(
+            new THREE.SphereGeometry(0.13, 8, 6),
+            firstPersonMaterial(0x596166)
+        );
+        ball.renderOrder = 999;
+        ball.frustumCulled = false;
+        heldItemRig.add(ball);
+        return;
+    }
+
+    if (["beef", "pork", "mutton", "chicken"].includes(type)) {
+        const meat = type === "beef" ? 0x963c33
+            : type === "pork" ? 0xdb8385
+                : type === "mutton" ? 0x97584c
+                    : 0xe0ca93;
+        add([0.27, 0.20, 0.17], [0, 0, 0], meat, [0.18, -0.24, 0.09]);
+        add([0.10, 0.11, 0.18], [0.13, -0.03, 0], 0xffdcc7, [0.18, -0.24, 0.09]);
+        return;
+    }
+
+    // Any future item still has a clear placeholder in the hand.
+    add([0.25, 0.25, 0.25], [0, 0, 0], heldBlockColors(type), [0.20, -0.28, 0.08]);
+}
+
+function createFirstPersonRig() {
+    firstPersonRig = new THREE.Group();
+    firstPersonRig.position.set(0.46, -0.48, -0.72);
+    firstPersonRig.rotation.set(0.10, -0.16, -0.08);
+    firstPersonRig.renderOrder = 999;
+
+    firstPersonArm = new THREE.Group();
+    firstPersonRig.add(firstPersonArm);
+
+    // A little blue sleeve plus a blocky hand means the player is never just
+    // a floating camera anymore, including when their hotbar is empty.
+    firstPersonBox(firstPersonArm, [0.20, 0.34, 0.20], [0.04, 0.08, 0.12], 0x3f74a5, [0.10, 0, -0.16]);
+    firstPersonBox(firstPersonArm, [0.18, 0.25, 0.18], [0.01, -0.16, 0.03], 0xe6a36f, [0.10, 0, -0.16]);
+    firstPersonBox(firstPersonArm, [0.22, 0.14, 0.20], [-0.02, -0.33, -0.07], 0xf0b47e, [0.10, 0, -0.16]);
+
+    heldItemRig = new THREE.Group();
+    heldItemRig.position.set(-0.11, -0.23, -0.17);
+    heldItemRig.rotation.set(0.18, -0.36, 0.08);
+    firstPersonArm.add(heldItemRig);
+
+    camera.add(firstPersonRig);
+    scene.add(camera);
+    buildHeldItem(selectedItem());
+}
+
+function swingPlayerHand(strength = 1) {
+    handSwing = Math.max(handSwing, strength);
+}
+
+function updateFirstPersonRig(delta) {
+    if (!firstPersonRig || !firstPersonArm || !heldItemRig) {
+        return;
+    }
+
+    const type = selectedItem();
+    if (heldItemKey !== (type || null)) {
+        buildHeldItem(type);
+    }
+
+    handSwing = Math.max(0, handSwing - delta * 5.3);
+    handBobTime += delta;
+
+    const moving = onGround && (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD);
+    const bob = moving ? Math.sin(handBobTime * 13) * 0.018 : 0;
+    const swing = Math.sin((1 - handSwing) * Math.PI) * handSwing;
+
+    firstPersonRig.visible = !gameOver && !craftingOpen && !tradingOpen;
+    firstPersonRig.position.set(0.46, -0.48 + bob, -0.72);
+    firstPersonRig.rotation.set(0.10 + swing * 0.62, -0.16, -0.08 - swing * 0.24);
+    firstPersonArm.rotation.set(0, 0, -0.12 - swing * 0.18);
+    heldItemRig.rotation.set(0.18 - swing * 0.28, -0.36, 0.08 + swing * 0.14);
 }
 
 // ============================================================
@@ -12937,6 +13206,8 @@ function startGame() {
 
     createMaterials();
 
+    createFirstPersonRig();
+
     blockGeometry =
         new THREE.BoxGeometry(
             1,
@@ -13080,6 +13351,10 @@ function animate() {
     );
 
     updateDayNight(
+        delta
+    );
+
+    updateFirstPersonRig(
         delta
     );
 
