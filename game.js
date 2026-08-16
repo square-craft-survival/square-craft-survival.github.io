@@ -229,6 +229,15 @@ const interactiveMeshes = new Set();
 let lastChunkX = null;
 let lastChunkZ = null;
 
+// Keep the first frame responsive: terrain generation/meshing still uses the
+// exact same loadChunk() pipeline, but the outer render distance is streamed
+// in over several frames instead of being built all at once.
+const CHUNK_LOAD_BUDGET_MS = 7;
+const CHUNK_LOAD_MAX_PER_FRAME = 1;
+
+let requiredChunkKeys = new Set();
+let chunkLoadQueue = [];
+
 const BLOCKS = [
     "grass",
     "dirt",
@@ -2940,12 +2949,15 @@ function refreshChunks(
     lastChunkZ =
         pcz;
 
-    const needed =
-        new Set();
-
     const radius =
         LOAD_DISTANCE +
         0.4;
+
+    const requests =
+        [];
+
+    requiredChunkKeys =
+        new Set();
 
     for (
         let dx =
@@ -2965,13 +2977,15 @@ function refreshChunks(
 
             dz++
         ) {
-            if (
+            const distanceSquared =
                 dx *
                 dx
                 +
                 dz *
-                dz
-                >
+                dz;
+
+            if (
+                distanceSquared >
                 radius *
                 radius
             ) {
@@ -2992,16 +3006,44 @@ function refreshChunks(
                     cz
                 );
 
-            needed.add(
+            requiredChunkKeys.add(
                 k
             );
 
-            loadChunk(
-                cx,
-                cz
-            );
+            if (
+                !loadedChunks.has(
+                    k
+                )
+            ) {
+                requests.push({
+                    cx,
+                    cz,
+                    distanceSquared
+                });
+            }
         }
     }
+
+    // The player must never walk into an unloaded chunk. This is only one
+    // chunk on a border crossing; everything else is handled progressively.
+    loadChunk(
+        pcx,
+        pcz
+    );
+
+    // Closest chunks render first, making the spawn area playable immediately
+    // while caves, ores, structures and mobs keep streaming in unchanged.
+    requests.sort(
+        (
+            a,
+            b
+        ) =>
+            a.distanceSquared -
+            b.distanceSquared
+    );
+
+    chunkLoadQueue =
+        requests;
 
     for (
         const k
@@ -3010,7 +3052,7 @@ function refreshChunks(
         ]
     ) {
         if (
-            !needed.has(
+            !requiredChunkKeys.has(
                 k
             )
         ) {
@@ -3018,6 +3060,61 @@ function refreshChunks(
                 k
             );
         }
+    }
+}
+
+function processChunkLoadQueue() {
+    if (
+        !chunkLoadQueue.length
+    ) {
+        return;
+    }
+
+    const startedAt =
+        performance.now();
+
+    let loadedThisFrame =
+        0;
+
+    while (
+        chunkLoadQueue.length
+        &&
+        loadedThisFrame <
+        CHUNK_LOAD_MAX_PER_FRAME
+        &&
+        performance.now() -
+        startedAt <
+        CHUNK_LOAD_BUDGET_MS
+    ) {
+        const next =
+            chunkLoadQueue.shift();
+
+        const k =
+            key2(
+                next.cx,
+                next.cz
+            );
+
+        // Ignore stale jobs left over from a previous player chunk. This avoids
+        // wasting time generating terrain that has already moved out of range.
+        if (
+            !requiredChunkKeys.has(
+                k
+            )
+            ||
+            loadedChunks.has(
+                k
+            )
+        ) {
+            continue;
+        }
+
+        loadChunk(
+            next.cx,
+            next.cz
+        );
+
+        loadedThisFrame++;
     }
 }
 
@@ -7763,6 +7860,10 @@ function animate() {
             clock.getDelta(),
             0.05
         );
+
+    // Generate at most one queued chunk between frames. This keeps startup and
+    // long-distance movement responsive instead of blocking on the full radius.
+    processChunkLoadQueue();
 
     attackCooldown =
         Math.max(
