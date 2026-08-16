@@ -6820,40 +6820,57 @@ function buildAnimalModel(
     ) {
         part(
             {
-                x: 0.34,
-                y: 0.92,
-                z: 0.22
+                x: 0.48,
+                y: 1.02,
+                z: 0.28
             },
 
-            0xcac6ba,
+            0xd7d4c9,
 
             {
                 x: 0,
-                y: 1.36,
+                y: 1.28,
+                z: 0
+            }
+        );
+
+        // Broad shoulders stop the silhouette from looking like a fence post.
+        part(
+            {
+                x: 0.76,
+                y: 0.16,
+                z: 0.30
+            },
+
+            0xc4c1b7,
+
+            {
+                x: 0,
+                y: 1.78,
                 z: 0
             }
         );
 
         part(
             {
-                x: 0.28,
-                y: 0.40,
-                z: 0.26
+                x: 0.46,
+                y: 0.58,
+                z: 0.38
             },
 
-            0xded9ce,
+            0xe6e2d7,
 
             {
                 x: 0,
-                y: 2.00,
+                y: 2.12,
                 z: 0.02
             }
         );
 
         part(
             {
-                x: 0.16,
-                y: 0.11,
+                x: 0.30,
+                y: 0.18,
                 z: 0.025
             },
 
@@ -6861,15 +6878,15 @@ function buildAnimalModel(
 
             {
                 x: 0,
-                y: 1.96,
-                z: 0.155
+                y: 2.13,
+                z: 0.22
             }
         );
 
         part(
             {
-                x: 0.18,
-                y: 0.04,
+                x: 0.12,
+                y: 0.035,
                 z: 0.025
             },
 
@@ -6877,8 +6894,8 @@ function buildAnimalModel(
 
             {
                 x: 0,
-                y: 1.89,
-                z: 0.16
+                y: 2.00,
+                z: 0.225
             }
         );
 
@@ -6893,8 +6910,8 @@ function buildAnimalModel(
 
             {
                 x: -0.09,
-                y: 2.07,
-                z: 0.15
+                y: 2.23,
+                z: 0.225
             }
         );
 
@@ -6909,39 +6926,23 @@ function buildAnimalModel(
 
             {
                 x: 0.09,
-                y: 2.07,
-                z: 0.15
+                y: 2.23,
+                z: 0.225
             }
         );
 
         part(
             {
-                x: 0.085,
-                y: 1.42,
-                z: 0.085
+                x: 0.10,
+                y: 1.55,
+                z: 0.10
             },
 
-            0xaaa79e,
+            0xb9b6ac,
 
             {
-                x: -0.29,
-                y: 1.18,
-                z: 0.02
-            }
-        );
-
-        part(
-            {
-                x: 0.085,
-                y: 1.42,
-                z: 0.085
-            },
-
-            0xaaa79e,
-
-            {
-                x: 0.29,
-                y: 1.18,
+                x: -0.43,
+                y: 1.10,
                 z: 0.02
             }
         );
@@ -6949,46 +6950,83 @@ function buildAnimalModel(
         part(
             {
                 x: 0.10,
-                y: 0.18,
+                y: 1.55,
                 z: 0.10
             },
 
-            0xd5d1c8,
+            0xb9b6ac,
 
             {
-                x: -0.29,
-                y: 0.38,
+                x: 0.43,
+                y: 1.10,
                 z: 0.02
             }
         );
 
         part(
             {
-                x: 0.10,
-                y: 0.18,
-                z: 0.10
+                x: 0.14,
+                y: 0.22,
+                z: 0.14
             },
 
-            0xd5d1c8,
+            0xdedbd1,
 
             {
-                x: 0.29,
-                y: 0.38,
+                x: -0.43,
+                y: 0.25,
+                z: 0.02
+            }
+        );
+
+        // Three skinny fingers on each hand give it a proper Rake silhouette.
+        for (const handX of [-0.43, 0.43]) {
+            for (const fingerZ of [-0.05, 0, 0.05]) {
+                part(
+                    {
+                        x: 0.025,
+                        y: 0.28,
+                        z: 0.025
+                    },
+
+                    0x929087,
+
+                    {
+                        x: handX,
+                        y: 0.04,
+                        z: fingerZ
+                    }
+                );
+            }
+        }
+
+        part(
+            {
+                x: 0.14,
+                y: 0.22,
+                z: 0.14
+            },
+
+            0xdedbd1,
+
+            {
+                x: 0.43,
+                y: 0.25,
                 z: 0.02
             }
         );
 
         part(
             {
-                x: 0.10,
-                y: 1.28,
-                z: 0.10
+                x: 0.12,
+                y: 1.22,
+                z: 0.12
             },
 
-            0xb9b5ad,
+            0xc7c3ba,
 
             {
-                x: -0.11,
+                x: -0.15,
                 y: 0.50,
                 z: 0
             }
@@ -6996,15 +7034,15 @@ function buildAnimalModel(
 
         part(
             {
-                x: 0.10,
-                y: 1.28,
-                z: 0.10
+                x: 0.12,
+                y: 1.22,
+                z: 0.12
             },
 
-            0xb9b5ad,
+            0xc7c3ba,
 
             {
-                x: 0.11,
+                x: 0.15,
                 y: 0.50,
                 z: 0
             }
